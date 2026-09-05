@@ -1,0 +1,461 @@
+.main {
+  min-height: 100vh;
+  padding-top: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #fafaf8;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 56px 20px 60px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.5px;
+  margin-bottom: 8px;
+}
+
+.subTitle {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 28px;
+}
+
+.card {
+  width: 100%;
+  background: #fff;
+  border: 1.5px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- 공통 폼 요소 ---- */
+
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 8px;
+}
+
+.req,
+.opt {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.req {
+  background: #fdeaea;
+  color: #d33;
+}
+
+.opt {
+  background: #f0f0f0;
+  color: #888;
+}
+
+.hint {
+  font-size: 12px;
+  color: #999;
+  margin: -4px 0 10px;
+}
+
+.input {
+  padding: 11px 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 15px;
+  color: #222;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+}
+
+.counter {
+  font-size: 12px;
+  color: #bbb;
+  text-align: right;
+  margin-top: 6px;
+}
+
+.section {
+  padding: 16px 0;
+  border-top: 1px solid #f2f2f2;
+}
+
+.section:first-of-type {
+  border-top: none;
+  padding-top: 14px;
+}
+
+/* ---- 1단계: 이름 + 중복확인 ---- */
+
+.nameRow {
+  display: flex;
+  gap: 8px;
+}
+
+.nameRow .input {
+  flex: 1;
+}
+
+.checkBtn {
+  flex-shrink: 0;
+  padding: 0 18px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.checkBtn:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.checkBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- verdict 안내 박스 ---- */
+
+.verdict {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.verdict strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.verdict p {
+  color: #555;
+  margin-bottom: 12px;
+}
+
+/* DUPLICATE — 절대 차단 */
+.blocked {
+  background: #fdf3f3;
+  border: 1.5px solid #f3d6d6;
+}
+
+.blocked strong {
+  color: #c0392b;
+}
+
+/* SIMILAR — 사용자 확인 */
+.similar {
+  background: #fffaf0;
+  border: 1.5px solid #f2e2c4;
+}
+
+.similar strong {
+  color: #b7791f;
+}
+
+.candidateList {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.candidateList li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.similarity {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: #aaa;
+}
+
+.verdictActions {
+  display: flex;
+  gap: 8px;
+}
+
+.verdictActions button {
+  flex: 1;
+  margin: 0;
+}
+
+/* ---- 2단계: 상세 입력 ---- */
+
+.nameBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f7f7f5;
+  border-radius: 8px;
+  font-size: 15px;
+  color: #222;
+  margin-bottom: 4px;
+}
+
+.nameBadgeLabel {
+  font-size: 12px;
+  color: #999;
+}
+
+.note {
+  font-size: 12px;
+  color: #b7791f;
+  margin: 10px 0 2px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 8px 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.chip.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.peopleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.select {
+  padding: 10px 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 15px;
+  font-family: inherit;
+  color: #222;
+  cursor: pointer;
+}
+
+.tilde {
+  color: #aaa;
+}
+
+.fileLabel {
+  display: block;
+  padding: 22px;
+  border: 1.5px dashed #ddd;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
+  color: #999;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.fileLabel:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.fileInput {
+  display: none;
+}
+
+.imageBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.imagePreview {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+/* ---- 3단계: 완료 ---- */
+
+.doneMark {
+  width: 52px;
+  height: 52px;
+  margin: 4px auto 14px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doneTitle {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 20px;
+}
+
+.summary {
+  margin: 0 0 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary > div {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.summary dt {
+  flex-shrink: 0;
+  width: 68px;
+  color: #999;
+}
+
+.summary dd {
+  margin: 0;
+  color: #333;
+}
+
+/* ---- 버튼 ---- */
+
+.primaryBtn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghostBtn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  background: transparent;
+  color: #666;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ghostBtn:hover {
+  border-color: #bbb;
+  color: #333;
+}
+
+.linkBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.linkBtn:hover {
+  color: var(--color-primary);
+}
+
+.guideText {
+  font-size: 15px;
+  color: #555;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+/* ---- 에러 ---- */
+
+.error {
+  color: #e53e3e;
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+
+.fieldError {
+  color: #e53e3e;
+  font-size: 12px;
+  margin: 8px 0 0;
+}

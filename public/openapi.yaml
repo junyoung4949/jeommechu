@@ -1,0 +1,765 @@
+openapi: 3.1.0
+
+info:
+  title: 점메추 API
+  version: "1.0.0"
+  description: |
+    점심 메뉴 추천 서비스 API. [Notion 명세서](https://app.notion.com/p/API-37bf0c528644812cb80ecc60ad0ee5b4)를
+    Supabase(Edge Function + Postgres + Auth + Storage) 위에 구현한 것입니다.
+
+    ## 인증 (명세 0-2 · dual 전략)
+    - **웹 브라우저**: 로그인 시 `accessToken`·`refreshToken` 이 HttpOnly 쿠키로 내려오고, 이후 자동 전송됩니다.
+    - **모바일 클라이언트**: 응답 body 의 `accessToken` 을 저장한 뒤 `Authorization: Bearer` 헤더로 보냅니다.
+    - **비로그인**: `uid` 쿠키(UUID)로 식별합니다. 서버가 자동 발급합니다.
+    - 둘 다 있으면 **JWT 를 우선**합니다.
+
+    `accessToken` 수명은 1시간입니다. 만료되면 `POST /auth/refresh` 로 재발급하세요 — 재로그인이 아닙니다.
+
+    ## 에러 포맷 (명세 0-4)
+    모든 에러는 `{ code, message, detail }` 단일 포맷입니다.
+    `code` 는 `UPPER_SNAKE_CASE` 기계용 식별자이고, 프론트는 **이 값으로 분기**합니다.
+    HTTP status 는 응답 헤더로만 표현하며 body 에 중복 기재하지 않습니다.
+
+    ## 경로에 대하여
+    명세 경로는 `/api/v1/*` 이고 실제 배포는 `/functions/v1/api/*` 입니다.
+    라우터가 두 형태를 모두 받으므로 앞단에서 rewrite 만 걸면 명세 그대로 쓸 수 있습니다.
+
+servers:
+  - url: /api
+    description: Vite dev 프록시 (동일 출처 — 쿠키가 그대로 동작합니다)
+  - url: https://pwfevsslxkituyfktmqe.supabase.co/functions/v1/api
+    description: 직접 호출 (ALLOWED_ORIGINS 시크릿 설정 필요)
+
+tags:
+  - name: 추천
+    description: 메뉴 추천과 행동 기록
+  - name: 카테고리
+  - name: 인증
+  - name: 메뉴 등록
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: accessToken
+      description: 웹 브라우저용. 로그인 시 HttpOnly 쿠키로 발급됩니다.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 모바일 클라이언트용.
+
+  schemas:
+    BudgetTier:
+      type: string
+      enum: [UNDER_5000, W5000_10000, W10000_15000, W15000_20000, OVER_20000]
+      description: |
+        예산 구간. **배열 순서가 곧 명세의 `order`** 입니다.
+
+        | code | 범위 | label |
+        |---|---|---|
+        | `UNDER_5000` | 0 ~ 5,000 미만 | 5천원 미만 |
+        | `W5000_10000` | 5,000 ~ 10,000 미만 | 5천원대 |
+        | `W10000_15000` | 10,000 ~ 15,000 미만 | 1만원대 |
+        | `W15000_20000` | 15,000 ~ 20,000 미만 | 1만5천원대 |
+        | `OVER_20000` | 20,000 이상 | 2만원 이상 |
+
+        **역할에 따라 해석이 다릅니다.**
+        메뉴 속성일 때는 그 메뉴가 속한 버킷 하나, 추천 필터일 때는 지불 가능 **상한**입니다.
+      example: W5000_10000
+
+    Category:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        name: { type: string, example: 한식 }
+
+    Menu:
+      type: object
+      description: 추천 응답에 실리는 메뉴 객체.
+      required: [id, name, budgetTier, categories, minPeople, maxPeople]
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        name: { type: string, example: 김치찌개 }
+        imageUrl:
+          type: [string, "null"]
+          example: null
+        budgetTier: { $ref: "#/components/schemas/BudgetTier" }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+        minPeople: { type: integer, example: 1 }
+        maxPeople: { type: integer, example: 4 }
+
+    MenuDetail:
+      type: object
+      description: 메뉴 등록 성공(201) 응답. 추천 응답보다 필드가 많습니다.
+      properties:
+        id: { type: integer, format: int64, example: 501 }
+        name: { type: string, example: 마라샹궈 }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+        budgetTier: { $ref: "#/components/schemas/BudgetTier" }
+        minPeople: { type: integer, example: 1 }
+        maxPeople: { type: integer, example: 4 }
+        imageUrl: { type: [string, "null"] }
+        description: { type: [string, "null"], example: 얼큰하고 든든해요 }
+        createdBy:
+          type: [object, "null"]
+          properties:
+            id: { type: integer, format: int64, example: 7 }
+            nickname: { type: string, example: 김준영 }
+        createdAt: { type: string, example: "2026-06-07T12:30:00+09:00" }
+
+    Me:
+      type: object
+      description: |
+        로그인한 사용자 표현. `/auth/me` 와 프로필 사진 API 가 **같은 형태**를 돌려주므로,
+        사진을 바꾼 뒤 `/auth/me` 를 다시 부를 필요가 없습니다.
+      required: [id, email, nickname, profileImageUrl]
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        email:
+          type: [string, "null"]
+          description: 소셜 로그인 사용자는 null 일 수 있습니다.
+        nickname: { type: string, example: 김준영, description: null 불가 }
+        profileImageUrl:
+          type: [string, "null"]
+          example: https://pwfevsslxkituyfktmqe.supabase.co/storage/v1/object/public/avatars/5b49a773/9c1e.png
+          description: |
+            소셜 공급자가 준 외부 URL 이거나 `avatars` 버킷 URL 입니다.
+            **null 이면 클라이언트가 닉네임 이니셜을 그립니다.** 외부 URL 은 깨질 수 있으므로
+            (구글 계정 사진을 바꾸면 옛 링크가 죽습니다) `onerror` 시에도 이니셜로 대체하세요.
+
+    TokenResponse:
+      type: object
+      description: |
+        로그인·소셜 로그인·재발급이 공유하는 응답.
+        같은 값이 **HttpOnly 쿠키로도 함께** 내려옵니다.
+      required: [accessToken, refreshToken, tokenType, expiresIn]
+      properties:
+        accessToken: { type: string, example: "eyJhbGci..." }
+        refreshToken:
+          type: string
+          example: "v1.Mr7x..."
+          description: 호출할 때마다 새 값이 내려옵니다(회전). 보관한다면 항상 최신 값으로 교체하세요.
+        tokenType: { type: string, example: Bearer }
+        expiresIn: { type: integer, example: 3600, description: accessToken 잔여 수명(초) }
+
+    Candidate:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 88 }
+        name: { type: string, example: 짬뽕 }
+        distance: { type: integer, example: 1, description: Levenshtein 편집거리 (한글 음절 단위) }
+        similarity: { type: number, example: 0.67, description: "1 - distance / max(len(a), len(b))" }
+
+    NameCheckResult:
+      type: object
+      properties:
+        input: { type: string, example: 짬뽕밥, description: 사용자 입력 원문 }
+        normalized: { type: string, example: 짬뽕밥, description: 정규화 + 이형어 매핑을 거친 형태 }
+        verdict:
+          type: string
+          enum: [PASS, DUPLICATE, SIMILAR]
+          description: |
+            | verdict | 의미 | 화면 |
+            |---|---|---|
+            | `DUPLICATE` (`matchType=ALIAS`) | 이형어 사전 일치 | 4-1 |
+            | `DUPLICATE` (`matchType=EXACT`) | 정규화 후 완전일치 | 4-2 |
+            | `SIMILAR` | 유사하지만 불일치 → 사용자 확인 | 4-3 |
+            | `PASS` | 겹치는 메뉴 없음 | 4-4 |
+        matched:
+          type: [object, "null"]
+          description: "`verdict=DUPLICATE` 일 때만 존재합니다."
+          properties:
+            id: { type: integer, format: int64 }
+            name: { type: string }
+            matchType: { type: string, enum: [EXACT, ALIAS] }
+            decisionCount: { type: integer }
+        candidates:
+          type: array
+          description: "`verdict=SIMILAR` 일 때만 채워집니다 (유사도 내림차순, 최대 3개)."
+          items: { $ref: "#/components/schemas/Candidate" }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 프론트는 이 값으로 분기합니다.
+          example: DUPLICATE_MENU
+        message: { type: string, example: 이미 등록된 메뉴입니다. }
+        detail:
+          type: object
+          description: 위반 필드 목록, 후보 배열 등 구조화된 부가정보. 없으면 `{}`.
+          example: {}
+
+  responses:
+    Unauthorized:
+      description: 인증 실패
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { code: UNAUTHORIZED, message: 인증이 필요합니다., detail: {} }
+    ValidationError:
+      description: 유효성 위반
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            code: VALIDATION_ERROR
+            message: 입력값을 다시 확인해 주세요.
+            detail: { fields: [budgetTier] }
+
+paths:
+  /categories:
+    get:
+      tags: [카테고리]
+      summary: 카테고리 목록 조회
+      description: |
+        화면 ① 최초 접속 시 필터에 표시합니다. 파라미터 없음 / 인증 불필요.
+
+        카테고리는 **매니저만 관리**하며, 사용자는 기존 id 중에서 선택만 합니다.
+      security: []
+      responses:
+        "200":
+          description: 이름 가나다순
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Category" }
+              example:
+                - { id: 7, name: 고기구이 }
+                - { id: 6, name: 국물요리 }
+                - { id: 1, name: 한식 }
+
+  /recommend:
+    get:
+      tags: [추천]
+      summary: 메뉴 추천
+      description: |
+        조건에 맞는 메뉴를 **한 개** 무작위로 반환하고 추천 이력을 기록합니다.
+
+        비로그인 상태이고 `uid` 쿠키가 없으면 서버가 새로 발급해 내려줍니다.
+      security:
+        - {}
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: people
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, example: 2 }
+          description: 함께 먹는 실제 인원수. `minPeople ≤ people ≤ maxPeople` 인 메뉴를 매칭합니다.
+        - name: budgetTier
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/BudgetTier" }
+          description: "**상한으로 해석**합니다. `W10000_15000` 을 주면 그 이하 티어가 모두 후보입니다."
+        - name: categoryIds
+          in: query
+          required: false
+          explode: true
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+          description: |
+            반복 파라미터로 보냅니다 (`categoryIds=1&categoryIds=3`).
+            여러 개면 **OR 매칭** — 하나라도 해당하면 후보입니다.
+      responses:
+        "200":
+          description: 추천 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recommendationId: { type: integer, format: int64, example: 1001 }
+                  menu: { $ref: "#/components/schemas/Menu" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404":
+          description: |
+            조건에 맞는 메뉴 없음. **예외가 아니라 정상 흐름입니다.**
+            단일 메뉴를 반환하는 API 라 "빈 배열 200" 으로 표현할 자리가 없어 404 를 씁니다.
+            프론트는 에러 토스트가 아니라 **필터 완화를 권하는 안내 UI** 를 띄우세요.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                code: NO_MENU_FOUND
+                message: 조건에 맞는 메뉴가 없어요. 필터를 넓혀 보세요.
+                detail: {}
+
+  /recommendations/{recommendationId}/action:
+    post:
+      tags: [추천]
+      summary: 추천 행동 기록 저장
+      description: 화면 ② "결정" / "다시" 버튼 클릭 시 호출합니다. Response Body 없음.
+      security:
+        - {}
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: recommendationId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+          description: 추천 API 응답의 `recommendationId`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [chosen, skipped]
+                  description: "`chosen` = 결정 버튼, `skipped` = 다시 버튼"
+            example: { action: chosen }
+      responses:
+        "200": { description: 기록됨 (본문 없음) }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404":
+          description: |
+            존재하지 않는 `recommendationId` 와 **남의 기록**을 동일하게 404 로 처리합니다.
+            403 으로 구분하면 존재 여부가 노출되기 때문입니다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { code: RECOMMENDATION_NOT_FOUND, message: 추천 기록을 찾을 수 없습니다., detail: {} }
+
+  /auth/register:
+    post:
+      tags: [인증]
+      summary: 회원가입
+      description: |
+        가입 즉시 로그인 가능합니다(이메일 인증 없음). 세션은 발급되지 않으므로 이어서 로그인하세요.
+
+        `nickname` 은 **서버가 자동 생성**합니다 — 이메일 로컬파트를 쓰고, 중복이면 숫자 서픽스를 붙입니다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password:
+                  type: string
+                  description: 8자 이상, **72바이트 이하** (bcrypt 한계. 한글은 1자가 3바이트)
+            example: { email: user@example.com, password: password1234 }
+      responses:
+        "201":
+          description: 생성됨
+          content:
+            application/json:
+              example: { id: 1, email: user@example.com, nickname: user }
+        "400":
+          description: 형식 위반. `detail.fields` 로 어느 칸이 문제인지 알려줍니다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                code: VALIDATION_ERROR
+                message: 이메일 또는 비밀번호 형식이 올바르지 않아요.
+                detail: { fields: [password] }
+        "409":
+          description: 이메일 중복
+          content:
+            application/json:
+              example: { code: EMAIL_ALREADY_EXISTS, message: 이미 사용 중인 이메일이에요., detail: {} }
+
+  /auth/login:
+    post:
+      tags: [인증]
+      summary: 로그인
+      description: |
+        `uid` 쿠키가 있으면 그 uid 로 쌓인 **비로그인 추천 기록이 계정으로 이전**되고, `uid` 쿠키는 삭제됩니다.
+        `uid` 가 없어도 로그인은 정상 동작합니다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+            example: { email: user@example.com, password: password1234 }
+      responses:
+        "200":
+          description: |
+            토큰 발급. `Set-Cookie` 로 `accessToken`(1시간) · `refreshToken`(30일) 이 함께 내려옵니다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "401":
+          description: 자격 증명 불일치
+          content:
+            application/json:
+              example: { code: INVALID_CREDENTIALS, message: 이메일 또는 비밀번호가 올바르지 않아요., detail: {} }
+
+  /auth/refresh:
+    post:
+      tags: [인증]
+      summary: 토큰 재발급
+      description: |
+        `accessToken` 만료 시 **재로그인 없이** 새 토큰을 받습니다. `Authorization` 헤더는 필요 없습니다 —
+        `refreshToken` 자체가 자격 증명입니다.
+
+        - **웹**: 본문 없이 호출합니다. `refreshToken` 쿠키가 자동 전송됩니다.
+        - **모바일**: 저장해 둔 값을 본문으로 보냅니다. 쿠키와 본문이 모두 있으면 **본문이 우선**합니다.
+
+        > 구 토큰 처리: 직전 토큰을 유예(기본 10초) 안에 재사용하면 200 이지만
+        > **새 세션이 아니라 이미 발급된 후속 토큰을 그대로** 돌려줍니다(재시도 대응).
+        > 2세대 이상 지난 토큰은 replay 로 간주해 401 입니다.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+            example: { refreshToken: "v1.Mr7x..." }
+      responses:
+        "200":
+          description: 재발급됨 (로그인과 동일한 응답)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "401":
+          description: 두 쿠키 **삭제 지시가 함께** 내려옵니다. 클라이언트는 비로그인 상태로 전환하세요.
+          content:
+            application/json:
+              example: { code: INVALID_REFRESH_TOKEN, message: 다시 로그인해 주세요., detail: {} }
+
+  /auth/kakao:
+    post:
+      tags: [인증]
+      summary: 카카오 로그인
+      description: |
+        인가 코드를 서버가 `id_token` 으로 교환한 뒤 세션을 만듭니다.
+
+        > ⚠️ 인가 요청 scope 에 **`openid profile_nickname profile_image`** 가 필요합니다.
+        > `openid` 가 없으면 `id_token` 이 안 와서 로그인 자체가 실패하고,
+        > `profile_nickname` 이 없으면 닉네임이 **이메일 앞부분**으로 생성되며,
+        > `profile_image` 가 없으면 `profileImageUrl` 이 `null` 이 됩니다.
+        > 셋 다 카카오 콘솔에서 동의항목을 켜 두어야 합니다.
+
+        최초 로그인 시 소셜 계정 정보로 자동 회원가입 처리됩니다.
+        이때 프로필 사진도 함께 승계합니다 — 카카오는 `picture` 를 `http://` 로 주므로
+        서버가 **https 로 승격**해 저장합니다(그대로 두면 배포 후 mixed content 로 차단됨).
+
+        > 승계는 **최초 가입 시점에만** 일어납니다. 이미 있는 계정은 나중에 동의항목을 켜고
+        > 재로그인해도 채워지지 않습니다. 사용자가 지운 사진을 로그인마다 되살리지 않으려는
+        > 의도적인 선택입니다 — 필요하면 `POST /auth/me/image` 로 직접 올리세요.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, description: 1회용, 약 10분 유효 }
+            example: { code: 인가코드값 }
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "400":
+          description: 인가 코드 무효 / 만료 / 재사용
+          content:
+            application/json:
+              example: { code: INVALID_AUTH_CODE, message: 유효하지 않은 인가 코드입니다., detail: {} }
+
+  /auth/google:
+    post:
+      tags: [인증]
+      summary: 구글 로그인
+      description: |
+        카카오와 동일한 인터페이스이며 인가 코드 발급처만 다릅니다.
+
+        > ⚠️ scope 에 **`openid email profile`** 이 필요합니다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+            example: { code: 인가코드값 }
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "400":
+          description: 인가 코드 무효
+          content:
+            application/json:
+              example: { code: INVALID_AUTH_CODE, message: 유효하지 않은 인가 코드입니다., detail: {} }
+
+  /auth/me:
+    get:
+      tags: [인증]
+      summary: 내 정보 조회
+      description: 로그인 상태 확인 용도로도 씁니다. 401 이면 클라이언트는 비로그인으로 처리하세요.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 조회됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/me/image:
+    post:
+      tags: [인증]
+      summary: 프로필 사진 등록·교체
+      description: |
+        등록과 교체가 같은 요청입니다. 이미 사진이 있으면 새 파일을 올린 뒤
+        **옛 파일을 서버가 지웁니다** — 클라이언트가 따로 삭제를 호출할 필요가 없습니다.
+
+        정리 순서는 `DB 갱신 → 옛 파일 삭제` 입니다. 반대로 하면 DB 갱신 실패 시
+        사진 없는 계정이 되기 때문입니다. 이 순서면 최악이라도 고아 파일 하나가 남습니다.
+
+        소셜 공급자의 외부 URL 을 쓰던 사용자는 그 URL 이 우리 것이 아니므로 삭제 대상에서 빠집니다.
+
+        > **Content-Type 예외**: `application/json` 이 아니라 `multipart/form-data` 를 씁니다.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: jpg / png / webp, 최대 2MB (메뉴 이미지보다 낮습니다)
+      responses:
+        "200":
+          description: 반영됨. 갱신된 사용자 정보를 그대로 돌려줍니다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: 2MB 초과
+          content:
+            application/json:
+              example: { code: FILE_TOO_LARGE, message: 이미지는 최대 2MB까지 올릴 수 있어요., detail: { maxSizeMb: 2 } }
+
+    delete:
+      tags: [인증]
+      summary: 프로필 사진 삭제
+      description: |
+        `profileImageUrl` 을 `null` 로 되돌리고 우리 버킷의 파일을 지웁니다.
+        사진이 없는 상태에서 호출해도 성공합니다(멱등).
+
+        소셜 사진을 지운 경우 **다시 가져오는 API 는 없습니다.** 재로그인해도 복구되지 않습니다 —
+        가입 트리거는 최초 가입 시에만 승계하기 때문입니다. 되돌리려면 직접 올려야 합니다.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 삭제됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+              example: { id: 11, email: wnsdud4949@naver.com, nickname: 김준영, profileImageUrl: null }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [인증]
+      summary: 로그아웃
+      description: |
+        `Max-Age=0` 쿠키로 `accessToken`·`refreshToken` 을 즉시 삭제하고 **세션을 폐기**합니다.
+        따라서 그 세션의 `refreshToken` 으로도 재발급할 수 없습니다. Response Body 없음.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200": { description: 로그아웃됨 (본문 없음) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /menus/name-check:
+    get:
+      tags: [메뉴 등록]
+      summary: 이름 중복확인
+      description: |
+        등록 전 미리보기용입니다. **최종 차단은 서버 책임**이라 등록 시 동일한 판정이 재수행됩니다.
+
+        판정 로직: 정규화 → 이형어 매핑 → 완전일치 검사 → 유사 후보 검색(편집거리 ≤ 2 **그리고** 유사도 ≥ 0.5).
+      security:
+        - {}
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 30 }
+          example: 짬뽕밥
+      responses:
+        "200":
+          description: 판정 결과
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NameCheckResult" }
+              example:
+                input: 짬뽕밥
+                normalized: 짬뽕밥
+                verdict: SIMILAR
+                matched: null
+                candidates:
+                  - { id: 4, name: 짬뽕, distance: 1, similarity: 0.67 }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  /images:
+    post:
+      tags: [메뉴 등록]
+      summary: 메뉴 이미지 업로드
+      description: |
+        반환된 `imageUrl` 을 메뉴 등록의 `imageUrl` 필드에 그대로 넣습니다.
+        이미지는 선택 항목이라 첨부하지 않으면 이 API 를 건너뛰어도 됩니다. 메뉴당 1장.
+
+        > **Content-Type 예외**: 이 API 만 `application/json` 이 아니라 `multipart/form-data` 를 씁니다.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: jpg / png / webp, 최대 5MB
+      responses:
+        "201":
+          description: 업로드됨
+          content:
+            application/json:
+              example:
+                imageUrl: https://pwfevsslxkituyfktmqe.supabase.co/storage/v1/object/public/menu-images/menus/3f9a1c2e.jpg
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: 5MB 초과
+          content:
+            application/json:
+              example: { code: FILE_TOO_LARGE, message: 이미지는 최대 5MB까지 올릴 수 있어요., detail: { maxSizeMb: 5 } }
+
+  /menus:
+    post:
+      tags: [메뉴 등록]
+      summary: 메뉴 등록
+      description: |
+        등록자(`createdBy`)는 토큰에서 추출하며 요청 본문으로 받지 않습니다.
+
+        **서버가 중복 판정을 재수행합니다.**
+        - `DUPLICATE` → 409, **우회 불가**
+        - `SIMILAR` && `confirmedDistinct=false` → 409
+        - `SIMILAR` && `confirmedDistinct=true` → 통과
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, categoryIds, budgetTier, minPeople, maxPeople]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 30 }
+                categoryIds:
+                  type: array
+                  minItems: 1
+                  items: { type: integer, format: int64 }
+                  description: 매니저가 등록한 기존 카테고리만 허용합니다.
+                budgetTier: { $ref: "#/components/schemas/BudgetTier" }
+                minPeople: { type: integer, minimum: 1 }
+                maxPeople: { type: integer, minimum: 1 }
+                imageUrl:
+                  type: [string, "null"]
+                  description: "`POST /images` 가 반환한 URL. **우리 버킷/CDN 도메인이 아니면 400** 입니다."
+                description: { type: [string, "null"], maxLength: 50 }
+                confirmedDistinct:
+                  type: boolean
+                  default: false
+                  description: SIMILAR 후보를 "다른 메뉴"라고 확인했을 때 true.
+            example:
+              name: 마라샹궈
+              categoryIds: [2]
+              budgetTier: W10000_15000
+              minPeople: 1
+              maxPeople: 4
+              description: 얼큰하고 든든해요
+              confirmedDistinct: false
+      responses:
+        "201":
+          description: 등록됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: 중복 또는 미확인 유사 후보
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                DUPLICATE_MENU:
+                  summary: 완전일치·이형어 일치 (절대 차단)
+                  value:
+                    code: DUPLICATE_MENU
+                    message: 이미 등록된 메뉴입니다.
+                    detail:
+                      matched: { id: 3, name: 자장면, matchType: ALIAS, decisionCount: 0 }
+                SIMILAR_NOT_CONFIRMED:
+                  summary: 유사 후보 존재 + 미확인
+                  value:
+                    code: SIMILAR_NOT_CONFIRMED
+                    message: 비슷한 메뉴가 있어요. 같은 메뉴인지 확인해 주세요.
+                    detail:
+                      candidates:
+                        - { id: 4, name: 짬뽕, distance: 1, similarity: 0.67 }

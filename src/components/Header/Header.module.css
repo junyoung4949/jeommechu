@@ -1,0 +1,167 @@
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  z-index: 100;
+}
+
+.logo {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.5px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.textBtn {
+  background: none;
+  border: none;
+  padding: 8px 4px;
+  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.textBtn:hover {
+  color: var(--color-primary);
+}
+
+.profile {
+  position: relative;
+}
+
+.avatarBtn {
+  display: block;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.12);
+  transition: box-shadow 0.15s;
+}
+
+.avatarBtn:hover,
+.avatarBtn:focus-visible {
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 220px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+}
+
+.menuHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid #f2f2f2;
+  margin-bottom: 6px;
+}
+
+.menuIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.menuNickname {
+  font-size: 14px;
+  color: #222;
+}
+
+.menuEmail {
+  font-size: 12px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuError {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff2f0;
+  color: #d4380d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #444;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.menuItem:hover:not(:disabled) {
+  background: #f6f6f6;
+}
+
+.menuItem:disabled {
+  color: #bbb;
+  cursor: default;
+}
+
+.menuItemDanger {
+  color: #d4380d;
+}
+
+.fileInput {
+  display: none;
+}
+
+.loginBtn {
+  padding: 8px 20px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.loginBtn:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
