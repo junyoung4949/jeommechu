@@ -459,3 +459,11 @@
   font-size: 12px;
   margin: 8px 0 0;
 }
+
+/* 경고가 아니라 안내다. fieldError 보다 한 단계 약하게 둔다. */
+.fieldHint {
+  color: #999;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}

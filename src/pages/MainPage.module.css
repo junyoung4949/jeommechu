@@ -107,6 +107,25 @@
   color: #bbb;
 }
 
+/* 등록자 표시. 사진 바로 아래에 붙여 "이 메뉴"에 대한 설명임을 드러낸다. */
+.credit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #666;
+}
+
+.credit strong {
+  color: #333;
+  font-weight: 600;
+}
+
+.creditMuted {
+  color: #aaa;
+}
+
 .actionBtns {
   display: flex;
   gap: 10px;
@@ -148,10 +167,62 @@
   border: 1.5px solid #ddd;
 }
 
-.share {
-  background: #fff;
-  color: #555;
+/* ---- 확정(decided) 화면 ---- */
+
+.decidedBadge {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.decidedBtns {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+/* 공유가 이 화면의 주행동이라 가장 강하게 준다. */
+.shareBtn {
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px var(--color-primary-shadow-soft);
+  transition: opacity 0.15s;
+}
+
+.shareBtn:hover {
+  opacity: 0.9;
+}
+
+.restartBtn {
+  padding: 12px;
   border: 1.5px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.restartBtn:hover {
+  border-color: #bbb;
+  color: #333;
 }
 
 .loginPrompt {

@@ -18,8 +18,8 @@
 }
 
 .toggleIcon {
-  font-size: 18px;
   color: #888;
+  flex: none;
 }
 
 .toggleLabel {
@@ -28,6 +28,9 @@
 }
 
 .toggleFold {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   font-size: 13px;
   color: #aaa;
   font-weight: 400;
@@ -48,11 +51,21 @@
   padding: 12px 0;
 }
 
+/* 아이콘과 글자의 베이스라인을 맞추려고 flex 로 둔다.
+   인라인 SVG 는 기본적으로 baseline 에 앉아 글자보다 살짝 내려가 보인다. */
 .sectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 10px;
   font-size: 13px;
   color: #666;
   font-weight: 500;
+}
+
+.sectionLabel svg {
+  color: #999;
+  flex: none;
 }
 
 .chips {

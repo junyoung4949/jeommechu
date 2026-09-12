@@ -76,22 +76,40 @@ components:
         id: { type: integer, format: int64, example: 1 }
         name: { type: string, example: 한식 }
 
+    MenuCreator:
+      type: [object, "null"]
+      description: |
+        메뉴를 등록한 사람. **`null` 이 되는 경우가 둘**입니다 —
+        시드로 들어 있던 기본 메뉴(`created_by` 가 처음부터 없음),
+        그리고 등록자가 탈퇴한 메뉴(`on delete set null`).
+        클라이언트는 둘을 구분할 수 없고, 구분할 필요도 없습니다 — "기본 메뉴"로 표시하세요.
+
+        노출 항목은 닉네임과 프로필 사진뿐입니다. 이메일은 절대 실리지 않습니다.
+      properties:
+        id: { type: integer, format: int64, example: 13, description: 사용자 id (`/auth/me` 의 id 와 같은 값) }
+        nickname: { type: string, example: 김준영 }
+        profileImageUrl:
+          type: [string, "null"]
+          description: null 이면 닉네임 이니셜을 그리세요 (`Me.profileImageUrl` 과 같은 규칙).
+
     Menu:
       type: object
       description: 추천 응답에 실리는 메뉴 객체.
-      required: [id, name, budgetTier, categories, minPeople, maxPeople]
+      required: [id, name, imageUrl, budgetTier, categories, minPeople, maxPeople, createdBy]
       properties:
         id: { type: integer, format: int64, example: 1 }
         name: { type: string, example: 김치찌개 }
         imageUrl:
-          type: [string, "null"]
-          example: null
+          type: string
+          description: 사진은 필수라 **절대 null 이 아닙니다** (DB NOT NULL).
+          example: https://images.unsplash.com/photo-1760228865341-675704c22a5b?w=640&h=400&fit=crop
         budgetTier: { $ref: "#/components/schemas/BudgetTier" }
         categories:
           type: array
           items: { $ref: "#/components/schemas/Category" }
         minPeople: { type: integer, example: 1 }
         maxPeople: { type: integer, example: 4 }
+        createdBy: { $ref: "#/components/schemas/MenuCreator" }
 
     MenuDetail:
       type: object
@@ -105,13 +123,9 @@ components:
         budgetTier: { $ref: "#/components/schemas/BudgetTier" }
         minPeople: { type: integer, example: 1 }
         maxPeople: { type: integer, example: 4 }
-        imageUrl: { type: [string, "null"] }
+        imageUrl: { type: string, description: 사진은 필수라 null 이 아닙니다. }
         description: { type: [string, "null"], example: 얼큰하고 든든해요 }
-        createdBy:
-          type: [object, "null"]
-          properties:
-            id: { type: integer, format: int64, example: 7 }
-            nickname: { type: string, example: 김준영 }
+        createdBy: { $ref: "#/components/schemas/MenuCreator" }
         createdAt: { type: string, example: "2026-06-07T12:30:00+09:00" }
 
     Me:
@@ -648,6 +662,38 @@ paths:
                   - { id: 4, name: 짬뽕, distance: 1, similarity: 0.67 }
         "400": { $ref: "#/components/responses/ValidationError" }
 
+  /menus/{id}:
+    get:
+      tags: [메뉴 등록]
+      summary: 메뉴 단건 조회
+      description: |
+        공유 링크(`/menus/{id}`)로 들어온 사람이 보는 화면의 데이터입니다.
+        **인증이 필요 없습니다** — 링크를 받은 사람은 대개 로그인 상태가 아닙니다.
+
+        응답 모양은 `POST /menus` 의 201 과 같습니다(`MenuDetail`).
+        같은 것을 두 가지 모양으로 내보내지 않기 위해서입니다.
+      security:
+        - {}
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+          example: 1
+      responses:
+        "200":
+          description: 조회됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuDetail" }
+        "404":
+          description: 없는 메뉴
+          content:
+            application/json:
+              example: { code: NOT_FOUND, message: 존재하지 않는 메뉴입니다., detail: { menuId: 99999 } }
+
   /images:
     post:
       tags: [메뉴 등록]
@@ -707,7 +753,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, categoryIds, budgetTier, minPeople, maxPeople]
+              required: [name, categoryIds, budgetTier, minPeople, maxPeople, imageUrl]
               properties:
                 name: { type: string, minLength: 1, maxLength: 30 }
                 categoryIds:
@@ -719,8 +765,11 @@ paths:
                 minPeople: { type: integer, minimum: 1 }
                 maxPeople: { type: integer, minimum: 1 }
                 imageUrl:
-                  type: [string, "null"]
-                  description: "`POST /images` 가 반환한 URL. **우리 버킷/CDN 도메인이 아니면 400** 입니다."
+                  type: string
+                  description: |
+                    **필수.** `POST /images` 가 반환한 URL 을 그대로 넣습니다.
+                    우리 버킷/CDN 도메인이 아니면 400 이고, 빠뜨려도 400 입니다.
+                    DB 의 `menus.image_url` 에 NOT NULL 이 걸려 있어 사진 없는 메뉴는 존재할 수 없습니다.
                 description: { type: [string, "null"], maxLength: 50 }
                 confirmedDistinct:
                   type: boolean

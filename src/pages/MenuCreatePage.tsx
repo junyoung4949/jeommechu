@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchCategories, type Category } from '../api/categories'
-import type { BudgetTier } from '../api/recommend'
+import { BUDGET_BUCKETS, type BudgetTier } from '../api/recommend'
 import {
   checkMenuName,
   createMenu,
@@ -15,18 +15,6 @@ interface Props {
   isLoggedIn: boolean
   onLoginClick: () => void
 }
-
-/**
- * 등록 화면의 예산은 **그 메뉴가 속한 버킷 하나**를 고르는 것이다.
- * 추천 필터의 "상한" 해석과 의미가 다르므로 라벨도 다르게 쓴다.
- */
-const BUDGET_BUCKETS: { value: BudgetTier; label: string }[] = [
-  { value: 'UNDER_5000', label: '5천원 미만' },
-  { value: 'W5000_10000', label: '5천원대' },
-  { value: 'W10000_15000', label: '1만원대' },
-  { value: 'W15000_20000', label: '1만5천원대' },
-  { value: 'OVER_20000', label: '2만원 이상' },
-]
 
 const PEOPLE_RANGE = [1, 2, 3, 4, 5, 6, 7, 8]
 
@@ -129,6 +117,9 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
       const url = await uploadMenuImage(file)
       setImageUrl(url)
       setImagePreview(URL.createObjectURL(file))
+      // 직전 제출에서 남은 사진 오류를 지운다. 안 지우면 방금 올렸는데도
+      // 사진 오류 문구가 그대로 떠 있는다.
+      setFieldErrors((prev) => prev.filter((f) => f !== 'imageUrl'))
     } catch (err) {
       const { code, message } = readApiError(err)
       setError(
@@ -147,8 +138,11 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
     if (!budgetTier) invalid.push('budgetTier')
     if (maxPeople < minPeople) invalid.push('maxPeople')
     if (description.length > 50) invalid.push('description')
+    if (!imageUrl) invalid.push('imageUrl')
 
-    if (invalid.length > 0) {
+    // budgetTier / imageUrl 을 따로 좁히는 이유: invalid 배열만 보면 타입이 안 좁혀져
+    // 아래에서 non-null 단언(!)을 써야 한다. 검사와 사용을 한 조건에 묶어 단언을 없앤다.
+    if (invalid.length > 0 || !budgetTier || !imageUrl) {
       setFieldErrors(invalid)
       setError('필수 항목을 확인해 주세요.')
       return
@@ -161,7 +155,7 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
       const menu = await createMenu({
         name: name.trim(),
         categoryIds,
-        budgetTier: budgetTier!,
+        budgetTier,
         minPeople,
         maxPeople,
         imageUrl,
@@ -429,7 +423,7 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
 
             <section className={styles.section}>
               <label className={styles.label}>
-                사진 <span className={styles.opt}>선택</span>
+                사진 <span className={styles.req}>필수</span>
               </label>
               {imagePreview ? (
                 <div className={styles.imageBox}>
@@ -456,8 +450,26 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
                   {uploading ? '업로드 중...' : '사진 선택 (jpg / png / webp, 5MB 이하)'}
                 </label>
               )}
+              {/*
+                등록된 사진은 모든 사용자에게 공개된다. 웹에서 가져온 사진을 올리면
+                저작권 문제가 되므로, 업로드 직전에 한 번 짚어 준다.
+              */}
+              <p className={styles.fieldHint}>
+                직접 찍은 사진만 올려주세요. 웹에서 가져온 사진은 저작권 문제가 될 수 있어요.
+              </p>
+              {/*
+                imageUrl 은 null 이거나 POST /images 가 돌려준 주소뿐이다(설정 지점이 그 둘뿐).
+                즉 서버의 "우리 버킷 주소인가" 검사는 UI 경로로는 걸릴 수 없고, API 를 직접
+                호출하는 경우에만 걸린다. 그래서 여기서는 "사진 없음"만 안내한다.
+                혹시 서버가 그래도 거절하면 아래 문구가 나오는데, 사용자에게 "주소"를 말해봐야
+                의미가 없으므로 할 수 있는 행동(다시 올리기)만 알려준다.
+              */}
               {invalid('imageUrl') && (
-                <p className={styles.fieldError}>이미지 주소가 올바르지 않아요. 다시 업로드해 주세요.</p>
+                <p className={styles.fieldError}>
+                  {imageUrl
+                    ? '사진을 등록하지 못했어요. 다시 올려주세요.'
+                    : '메뉴 사진을 등록해 주세요.'}
+                </p>
               )}
             </section>
 
