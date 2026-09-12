@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import confetti from 'canvas-confetti'
 import FilterCard, { type FilterState } from '../components/FilterCard/FilterCard'
+import Avatar from '../components/Avatar/Avatar'
 import { fetchCategories, type Category } from '../api/categories'
 import { fetchRecommend, postAction, type RecommendResult } from '../api/recommend'
 import styles from './MainPage.module.css'
@@ -14,7 +15,16 @@ interface Props {
   onLoginClick: () => void
 }
 
-type Phase = 'home' | 'result'
+/**
+ * home   : 조건 고르고 추천받기 전
+ * result : 추천 결과를 보는 중 (결정 / 다시)
+ * decided: 결정을 누른 뒤 (공유 / 다시 고르기)
+ *
+ * decided 를 따로 둔 이유: 공유는 "내가 정한 메뉴"를 보내는 행동이라
+ * 결정 이전에 열어두면 의미가 흐려진다. 예전에는 결정 후 2.2초 뒤 홈으로 돌아가서
+ * 공유할 틈 자체가 없기도 했다.
+ */
+type Phase = 'home' | 'result' | 'decided'
 
 export default function MainPage({ onLoginClick }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
@@ -76,10 +86,8 @@ export default function MainPage({ onLoginClick }: Props) {
     if (!result) return
     await postAction(result.recommendationId, 'chosen').catch(() => {})
     fireConfetti()
-    setTimeout(() => {
-      setPhase('home')
-      setResult(null)
-    }, 2200)
+    // 홈으로 되돌리지 않는다. 확정 화면에 머물러야 공유할 수 있다.
+    setPhase('decided')
   }
 
   async function handleSkip() {
@@ -88,16 +96,54 @@ export default function MainPage({ onLoginClick }: Props) {
     handleRecommend()
   }
 
+  /** 확정 화면에서 처음으로 돌아간다. */
+  function handleRestart() {
+    setPhase('home')
+    setResult(null)
+    setError('')
+  }
+
   function handleShare() {
     if (!result) return
     const text = `오늘 점심은 ${result.menu.name}${iGa(result.menu.name)} 좋겠군요 — 점메추`
+    // /menus/{id} 가 아니라 /share/{id} 를 보낸다.
+    // 메신저 크롤러는 JS 를 실행하지 않아 SPA 경로에서는 메뉴별 미리보기를 못 읽는다.
+    // /share/{id} 는 서버가 OG 태그를 박아 주고, 사람은 곧바로 /menus/{id} 로 넘어간다.
+    const url = `${window.location.origin}/share/${result.menu.id}`
+
     if (navigator.share) {
-      navigator.share({ title: '점메추', text })
+      navigator.share({ title: '점메추', text, url })
     } else {
-      navigator.clipboard.writeText(text)
+      navigator.clipboard.writeText(`${text}\n${url}`)
       alert('클립보드에 복사됐어요!')
     }
   }
+
+  /** 결과 화면과 확정 화면이 함께 쓰는 부분 (사진 + 등록자). */
+  const menuVisual = (menu: RecommendResult['menu']) => (
+    <>
+      <div className={styles.foodImageWrap}>
+        <img src={menu.imageUrl} alt={menu.name} className={styles.foodImage} />
+      </div>
+
+      {menu.createdBy ? (
+        <p className={styles.credit}>
+          <Avatar
+            nickname={menu.createdBy.nickname}
+            imageUrl={menu.createdBy.profileImageUrl}
+            size={22}
+          />
+          <span>
+            <strong>{menu.createdBy.nickname}</strong>님이 등록한 메뉴예요
+          </span>
+        </p>
+      ) : (
+        <p className={styles.credit}>
+          <span className={styles.creditMuted}>점메추 기본 메뉴</span>
+        </p>
+      )}
+    </>
+  )
 
   return (
     <main className={styles.main}>
@@ -124,18 +170,9 @@ export default function MainPage({ onLoginClick }: Props) {
           <p className={styles.resultSub}>오늘 점심은</p>
           <h2 className={styles.resultTitle}>{result.menu.name}{iGa(result.menu.name)} 좋겠군요</h2>
 
-          <div className={styles.foodImageWrap}>
-            {result.menu.imageUrl ? (
-              <img
-                src={result.menu.imageUrl}
-                alt={result.menu.name}
-                className={styles.foodImage}
-              />
-            ) : (
-              <div className={styles.foodImagePlaceholder}>[ 음식 사진 ]</div>
-            )}
-          </div>
+          {menuVisual(result.menu)}
 
+          {/* 공유는 여기 없다 — 결정한 뒤(decided)에만 연다. */}
           <div className={styles.actionBtns}>
             <button className={`${styles.actionBtn} ${styles.chosen}`} onClick={handleChosen}>
               ✓ 결정
@@ -147,15 +184,30 @@ export default function MainPage({ onLoginClick }: Props) {
             >
               ↺ {loading ? '...' : '다시'}
             </button>
-            <button className={`${styles.actionBtn} ${styles.share}`} onClick={handleShare}>
-              ↗ 공유하기
-            </button>
           </div>
 
           {error && <p className={styles.error}>{error}</p>}
 
           <div className={styles.filterWrap}>
             <FilterCard categories={categories} filters={filters} onChange={setFilters} />
+          </div>
+        </div>
+      )}
+
+      {phase === 'decided' && result && (
+        <div className={styles.resultContent}>
+          <p className={styles.decidedBadge}>오늘 점심 확정</p>
+          <h2 className={styles.resultTitle}>{result.menu.name}</h2>
+
+          {menuVisual(result.menu)}
+
+          <div className={styles.decidedBtns}>
+            <button className={styles.shareBtn} onClick={handleShare}>
+              ↗ 친구에게 공유하기
+            </button>
+            <button className={styles.restartBtn} onClick={handleRestart}>
+              다시 고르기
+            </button>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 import client from './client'
 import type { Category } from './categories'
-import type { BudgetTier } from './recommend'
+import type { BudgetTier, MenuCreator } from './recommend'
 
 export type Verdict = 'PASS' | 'DUPLICATE' | 'SIMILAR'
 export type MatchType = 'EXACT' | 'ALIAS'
@@ -35,9 +35,9 @@ export interface MenuDetail {
   budgetTier: BudgetTier
   minPeople: number
   maxPeople: number
-  imageUrl: string | null
+  imageUrl: string
   description: string | null
-  createdBy: { id: number; nickname: string } | null
+  createdBy: MenuCreator | null
   createdAt: string
 }
 
@@ -47,10 +47,20 @@ export interface CreateMenuBody {
   budgetTier: BudgetTier
   minPeople: number
   maxPeople: number
-  imageUrl?: string | null
+  /** 필수. `uploadMenuImage()` 가 반환한 URL 을 그대로 넣는다. */
+  imageUrl: string
   description?: string | null
   /** SIMILAR 후보를 "다른 메뉴"라고 확인했을 때 true */
   confirmedDistinct?: boolean
+}
+
+/**
+ * 메뉴 단건 조회. 공유 링크로 들어온 사람이 보는 화면의 데이터원이다.
+ * 인증이 필요 없다 — 링크를 받은 사람은 보통 로그인 상태가 아니다.
+ */
+export async function fetchMenu(id: number): Promise<MenuDetail> {
+  const { data } = await client.get<MenuDetail>(`/menus/${id}`)
+  return data
 }
 
 /** 등록 전 미리보기용. 최종 차단은 서버가 등록 시 다시 판정한다. */

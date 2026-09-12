@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+// @ts-expect-error — 배포 산출물용 순수 JS 모듈이라 타입 선언이 없다.
+import { shareDevPlugin } from './infra/share/vitePlugin.mjs'
 
 // API 프록시: /api/* → Supabase Edge Function `api`
 //
@@ -14,7 +16,7 @@ import react from '@vitejs/plugin-react'
 const API_TARGET = 'https://pwfevsslxkituyfktmqe.supabase.co'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), shareDevPlugin(API_TARGET)],
   build: {
     rollupOptions: {
       // api-docs.html 은 앱과 별개의 진입점이다. 명시하지 않으면 빌드에서 빠진다.

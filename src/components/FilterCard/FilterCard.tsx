@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Category } from '../../api/categories'
 import type { BudgetTier } from '../../api/recommend'
+import Icon from '../Icon/Icon'
 import styles from './FilterCard.module.css'
 
 export interface FilterState {
@@ -44,15 +45,21 @@ export default function FilterCard({ categories, filters, onChange }: Props) {
   return (
     <div className={styles.wrapper}>
       <button className={styles.toggleHeader} onClick={() => setOpen((v) => !v)}>
-        <span className={styles.toggleIcon}>≡</span>
+        <Icon name="tune" className={styles.toggleIcon} />
         <span className={styles.toggleLabel}>필터</span>
-        <span className={styles.toggleFold}>{open ? '∧ 접기' : '∨ 펼치기'}</span>
+        <span className={styles.toggleFold}>
+          {open ? '접기' : '펼치기'}
+          <Icon name={open ? 'expandLess' : 'expandMore'} size={16} />
+        </span>
       </button>
 
       {open && (
         <div className={styles.card}>
           <section className={styles.section}>
-            <p className={styles.sectionLabel}>👤 인원수</p>
+            <p className={styles.sectionLabel}>
+              <Icon name="group" />
+              인원수
+            </p>
             <div className={styles.chips}>
               {PEOPLE_OPTIONS.map(({ value, label }) => (
                 <button
@@ -69,7 +76,10 @@ export default function FilterCard({ categories, filters, onChange }: Props) {
           <div className={styles.divider} />
 
           <section className={styles.section}>
-            <p className={styles.sectionLabel}>₩ 예산</p>
+            <p className={styles.sectionLabel}>
+              <Icon name="payments" />
+              예산
+            </p>
             <div className={styles.chips}>
               {BUDGET_OPTIONS.map(({ value, label }) => (
                 <button
@@ -88,7 +98,10 @@ export default function FilterCard({ categories, filters, onChange }: Props) {
           <div className={styles.divider} />
 
           <section className={styles.section}>
-            <p className={styles.sectionLabel}>⊞ 카테고리</p>
+            <p className={styles.sectionLabel}>
+              <Icon name="category" />
+              카테고리
+            </p>
             <div className={styles.chips}>
               {categories.map(({ id, name }) => (
                 <button
