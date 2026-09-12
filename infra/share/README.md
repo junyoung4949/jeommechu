@@ -24,53 +24,92 @@ Supabase Edge Function 은 `*.supabase.co` 에서 **HTML 을 서빙할 수 없�
 | 파일 | 역할 |
 |---|---|
 | `shareHtml.mjs` | HTML 생성. 의존성 없는 순수 함수 |
-| `index.mjs` | AWS Lambda 핸들러 (Function URL, payload v2.0) |
+| `index.mjs` | Lambda 핸들러 (페이로드 형식 v2.0) |
 | `vitePlugin.mjs` | 개발 서버용. **같은 `shareHtml()`** 을 쓴다 |
 
 개발과 배포가 같은 생성기를 쓰므로, 로컬에서 확인한 HTML 이 곧 배포 결과입니다.
 
-## AWS 설정
+```
+CloudFront  /share/*  →  API Gateway (HTTP API)  →  Lambda  →  GET /menus/{id}
+```
 
-### 1. Lambda 생성
+### ⚠️ Function URL 이 아니라 API Gateway 인 이유
 
-- 런타임: Node.js 20 이상 (전역 `fetch` 필요)
-- 핸들러: `index.handler`
-- 업로드: `shareHtml.mjs` + `index.mjs`
-- **Function URL 활성화** (인증 `NONE` — 공개 페이지입니다)
+원래는 Lambda Function URL 을 CloudFront 오리진으로 붙이려 했으나, **이 AWS 계정에서는
+Function URL 호출이 차단됩니다.** 퍼블릭(`AuthType=NONE`)도, CloudFront OAC(`AWS_IAM`)도
+모두 403 이었습니다. 조직 SCP 제약으로 보입니다.
 
-환경변수 두 개:
+진단 근거: IAM 자격으로 **직접 서명 호출하면 200** 이 나왔습니다 — Lambda 코드와 URL 계층은
+정상이고 인가 단계에서만 막힌다는 뜻입니다.
+
+API Gateway HTTP API 는 Function URL 과 **페이로드 형식이 같아서(v2.0)** 핸들러 코드를
+고치지 않고 그대로 씁니다. `event.rawPath` 를 읽는 부분이 동일하게 동작합니다.
+
+## 현재 배포된 리소스
+
+| 리소스 | 값 |
+|---|---|
+| CloudFront 배포 | `E2SSO86KP6P9W8` — `d2n9xddk1fbwmp.cloudfront.net` |
+| S3 버킷 (SPA) | `jeommechu` (OAC `E31Z06UFU1TCKR`) |
+| Lambda | `jeommechu-share` (nodejs22.x, ap-northeast-2) |
+| API Gateway | `vets1dkswc` — `vets1dkswc.execute-api.ap-northeast-2.amazonaws.com` |
+| CloudFront Function | `jeommechu-api-rewrite`, `jeommechu-spa-routing` |
+
+Lambda 환경변수:
 
 ```
 API_BASE = https://pwfevsslxkituyfktmqe.supabase.co/functions/v1/api
-SITE_URL = https://<배포된 앱 도메인>
+SITE_URL = https://d2n9xddk1fbwmp.cloudfront.net
 ```
 
-> `SITE_URL` 을 빠뜨리면 500 을 돌려줍니다. 잘못된 링크가 퍼지는 것보다 낫습니다.
+> `SITE_URL` 이 비면 500 을 돌려줍니다. 잘못된 링크가 퍼지는 것보다 낫습니다.
 
-### 2. CloudFront 동작(Behavior) 추가
+## CloudFront 동작(Behavior)
 
-기존 S3 오리진은 그대로 두고, Lambda Function URL 을 **오리진으로 추가**한 뒤:
+| 순서 | 경로 | 오리진 | 함수 | 캐시 정책 |
+|---|---|---|---|---|
+| 1 | `/api/*` | Supabase | `jeommechu-api-rewrite` (viewer-request) | CachingDisabled |
+| 2 | `/share/*` | API Gateway | — | CachingOptimized |
+| 기본 | `*` | S3 | `jeommechu-spa-routing` (viewer-request) | CachingOptimized |
 
-| 항목 | 값 |
-|---|---|
-| 경로 패턴 | `/share/*` |
-| 오리진 | Lambda Function URL |
-| 뷰어 프로토콜 | Redirect HTTP to HTTPS |
-| 허용 메서드 | GET, HEAD |
-| 캐시 정책 | CachingOptimized (Lambda 가 `max-age=300` 을 줍니다) |
+`/api/*` 는 **AllViewerExceptHostHeader** 오리진 요청 정책을 씁니다. 쿠키·헤더·쿼리스트링을
+그대로 넘겨야 로그인이 동작합니다.
 
-**우선순위를 기본 동작보다 위에 두세요.** 아래로 가면 S3 가 먼저 먹어 404 가 납니다.
+### ⚠️ CustomErrorResponses 를 쓰지 않습니다
 
-### 3. SPA 라우팅 (기본 동작)
+SPA 라우팅을 `403/404 → /index.html` 커스텀 오류 응답으로 처리하면 **배포 전체에 적용되어
+`/api/*` 의 진짜 404 까지 index.html 로 바뀝니다.** 클라이언트가 `NOT_FOUND` 를 구분하지
+못하게 됩니다(실제로 한 번 그렇게 깨졌습니다).
 
-`/menus/17` 같은 클라이언트 라우트가 새로고침에도 열리려면 403/404 를 `/index.html`
-(200)로 돌려주는 오류 응답 설정이 필요합니다. 이건 공유 기능과 무관하게 필요한 설정입니다.
+그래서 기본 동작에만 `jeommechu-spa-routing` 함수를 붙여 **확장자 없는 경로만**
+`/index.html` 로 재작성합니다. `/api/*` 와 `/share/*` 는 각자의 동작이라 영향이 없습니다.
+
+## 재배포
+
+```bash
+# 프론트
+npm run build
+aws s3 sync dist/ s3://jeommechu/ --exclude "images/*"
+aws cloudfront create-invalidation --distribution-id E2SSO86KP6P9W8 --paths "/*"
+
+# Lambda (infra/share 수정 시)
+cd infra/share && zip -j /tmp/share.zip index.mjs shareHtml.mjs
+aws lambda update-function-code --function-name jeommechu-share --zip-file fileb:///tmp/share.zip
+```
+
+> `aws s3 sync` 에 `--delete` 를 붙이지 마세요. 버킷의 `images/` 는 별개 자산입니다.
 
 ## 확인
 
-배포 후 [카카오 디버거](https://developers.kakao.com/tool/debugger/sharing)에
-`https://<도메인>/share/1` 을 넣어 카드가 뜨는지 봅니다.
-캐시가 남아 있으면 디버거에서 "초기화"를 누르세요.
+```bash
+S=https://d2n9xddk1fbwmp.cloudfront.net
+curl -s "$S/share/1" | grep -E "og:(title|image|url)"   # OG 태그
+curl -s -o /dev/null -w "%{http_code}\n" "$S/share/99999"  # 302 (홈으로)
+curl -s -o /dev/null -w "%{http_code}\n" "$S/api/menus/99999"  # 404 여야 함
+```
+
+카카오 카드는 [카카오 디버거](https://developers.kakao.com/tool/debugger/sharing)에
+`$S/share/1` 을 넣어 확인합니다. 캐시가 남아 있으면 "초기화"를 누르세요.
 
 로컬에서는 개발 서버가 같은 경로를 처리합니다:
 

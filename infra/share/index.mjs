@@ -1,15 +1,19 @@
 import { parseMenuId, shareHtml } from './shareHtml.mjs'
 
 /**
- * CloudFront `/share/*` 동작이 가리키는 Lambda (Function URL, payload v2.0).
+ * CloudFront `/share/*` 동작이 도달하는 Lambda.
+ *
+ *   CloudFront  →  API Gateway (HTTP API)  →  이 함수
  *
  * CloudFront Functions 로는 못 한다 — 네트워크 호출이 막혀 있어 메뉴 정보를 가져올 수 없다.
- * Lambda@Edge 도 가능하지만 us-east-1 고정에 버전 복제까지 필요해서, 평범한 리전 Lambda 를
- * Function URL 로 열고 CloudFront 오리진으로 붙이는 쪽이 배포·수정이 훨씬 간단하다.
+ *
+ * 앞단이 Function URL 이 아니라 API Gateway 인 이유: 이 AWS 계정은 Function URL 호출이
+ * 차단돼 있다(퍼블릭·OAC 모두 403. IAM 서명 직접 호출은 200 이라 코드 문제는 아니다).
+ * 둘은 페이로드 형식이 v2.0 으로 같아서 이 핸들러는 그대로 쓴다 — `event.rawPath` 동일.
  *
  * 환경변수
  *   API_BASE  Supabase Edge Function 주소 (예: https://xxx.supabase.co/functions/v1/api)
- *   SITE_URL  배포된 앱 origin (예: https://jeommechu.example.com)
+ *   SITE_URL  배포된 앱 origin (예: https://d2n9xddk1fbwmp.cloudfront.net)
  */
 const API_BASE = (process.env.API_BASE ?? '').replace(/\/+$/, '')
 const SITE_URL = (process.env.SITE_URL ?? '').replace(/\/+$/, '')
