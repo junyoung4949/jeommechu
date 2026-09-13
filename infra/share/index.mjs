@@ -13,7 +13,7 @@ import { parseMenuId, shareHtml } from './shareHtml.mjs'
  *
  * 환경변수
  *   API_BASE  Supabase Edge Function 주소 (예: https://xxx.supabase.co/functions/v1/api)
- *   SITE_URL  배포된 앱 origin (예: https://d2n9xddk1fbwmp.cloudfront.net)
+ *   SITE_URL  배포된 앱 origin (예: https://jeommechu.co.kr)
  */
 const API_BASE = (process.env.API_BASE ?? '').replace(/\/+$/, '')
 const SITE_URL = (process.env.SITE_URL ?? '').replace(/\/+$/, '')
