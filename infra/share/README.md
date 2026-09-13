@@ -29,6 +29,10 @@ Supabase Edge Function 은 `*.supabase.co` 에서 **HTML 을 서빙할 수 없�
 
 개발과 배포가 같은 생성기를 쓰므로, 로컬에서 확인한 HTML 이 곧 배포 결과입니다.
 
+CloudFront Function 소스는 `../cloudfront/` 에 있습니다. 이 파일들은 **빌드에 포함되지
+않고** AWS 에 따로 올라갑니다. 리포의 사본이 원본이므로, 콘솔에서 직접 고치지 마세요 —
+다음 배포 때 덮어써지고 변경 이력도 남지 않습니다.
+
 ```
 CloudFront  /share/*  →  API Gateway (HTTP API)  →  Lambda  →  GET /menus/{id}
 ```
@@ -154,9 +158,25 @@ aws cloudfront create-invalidation --distribution-id E2SSO86KP6P9W8 --paths "/*"
 # Lambda (infra/share 수정 시)
 cd infra/share && zip -j /tmp/share.zip index.mjs shareHtml.mjs
 aws lambda update-function-code --function-name jeommechu-share --zip-file fileb:///tmp/share.zip
+
+# CloudFront Function (infra/cloudfront 수정 시)
+F=jeommechu-spa-routing   # 또는 jeommechu-api-rewrite
+E=$(aws cloudfront describe-function --name $F --stage DEVELOPMENT --query ETag --output text)
+aws cloudfront update-function --name $F --if-match "$E" \
+  --function-config '{"Comment":"","Runtime":"cloudfront-js-2.0"}' \
+  --function-code fileb://infra/cloudfront/spa-routing.js
+# 배포 전에 반드시 테스트한다 (아래 "확인" 참고)
+E=$(aws cloudfront describe-function --name $F --stage DEVELOPMENT --query ETag --output text)
+aws cloudfront publish-function --name $F --if-match "$E"
 ```
 
+`publish-function` 이 끝나면 연결된 배포에 자동 전파됩니다(1~2분). 무효화는 필요 없습니다 —
+viewer-request 함수는 캐시보다 앞에서 돕니다.
+
 > `aws s3 sync` 에 `--delete` 를 붙이지 마세요. 버킷의 `images/` 는 별개 자산입니다.
+
+> ⚠️ **ETag 는 매 수정마다 바뀝니다.** `update-function` 뒤에 다시 조회해야
+> `publish-function` 이 통과합니다. 위 순서를 지키세요.
 
 ## 확인
 
@@ -165,6 +185,7 @@ S=https://jeommechu.co.kr
 curl -s "$S/share/1" | grep -E "og:(title|image|url)"   # OG 태그
 curl -s -o /dev/null -w "%{http_code}\n" "$S/share/99999"  # 302 (홈으로)
 curl -s -o /dev/null -w "%{http_code}\n" "$S/api/menus/99999"  # 404 여야 함
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://www.jeommechu.co.kr/  # 301 → apex
 ```
 
 카카오 카드는 [카카오 디버거](https://developers.kakao.com/tool/debugger/sharing)에
