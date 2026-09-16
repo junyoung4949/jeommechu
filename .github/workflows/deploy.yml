@@ -1,0 +1,95 @@
+#
+# master 에 올라가면 프론트를 S3 에 올리고 CloudFront 캐시를 비운다.
+#
+# 인프라(infra/share 의 Lambda, infra/cloudfront 의 Function)는 **일부러 빼놨다.**
+# 거의 안 바뀌는 데다 잘못 배포하면 사이트 전체가 죽는다. 그쪽은 infra/share/README.md
+# 의 수동 절차를 쓴다.
+#
+name: deploy
+
+on:
+  push:
+    branches: [master]
+  # 코드 변경 없이 다시 배포하고 싶을 때 (예: 시크릿만 바꿨을 때) 수동으로 돌린다.
+  workflow_dispatch:
+
+# 배포가 겹치면 나중 것이 먼저 끝나 옛 번들이 남을 수 있다. 한 번에 하나만 돈다.
+# 진행 중인 배포는 취소하지 않는다 — S3 에 반쯤 올라간 상태로 멈추는 게 더 나쁘다.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET: jeommechu
+  CLOUDFRONT_DISTRIBUTION_ID: E2SSO86KP6P9W8
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      # OIDC 토큰을 발급받아 AWS 역할을 맡는 데 필요하다. 이게 없으면 자격증명 단계가 실패한다.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Vite 는 VITE_* 를 **빌드 타임에 번들로 구워 넣는다.** 비어 있어도 빌드는 성공하고,
+      # 그 사실은 사용자가 카카오 공유를 누를 때에야 드러난다. 여기서 먼저 막는다.
+      #
+      # (참고: 이 값들은 어차피 번들에 박혀 공개된다. GitHub Secrets 에 두는 건 유출 방지가
+      #  아니라 리포에 커밋하지 않기 위해서다. 진짜 비밀은 절대 VITE_ 로 넘기지 말 것.)
+      - name: 빌드 환경변수 확인
+        env:
+          VITE_KAKAO_CLIENT_ID: ${{ secrets.VITE_KAKAO_CLIENT_ID }}
+          VITE_KAKAO_JS_KEY: ${{ secrets.VITE_KAKAO_JS_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          missing=""
+          for name in VITE_KAKAO_CLIENT_ID VITE_KAKAO_JS_KEY VITE_GOOGLE_CLIENT_ID; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::비어 있는 시크릿:$missing — 리포 Settings > Secrets 에서 채우세요."
+            exit 1
+          fi
+
+      - name: 빌드
+        env:
+          VITE_KAKAO_CLIENT_ID: ${{ secrets.VITE_KAKAO_CLIENT_ID }}
+          VITE_KAKAO_JS_KEY: ${{ secrets.VITE_KAKAO_JS_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        # tsc -b 를 포함하므로 타입 오류는 여기서 걸린다.
+        run: npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::624032815464:role/jeommechu-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      # --delete 를 쓰지 않는다. 버킷의 images/ 는 앱 빌드와 무관한 별개 자산이라
+      # 지워지면 등록된 메뉴 사진이 전부 깨진다.
+      #
+      # 대신 해시 없는 파일(index.html 등)이 캐시에 남지 않도록 무효화로 마무리한다.
+      - name: S3 업로드
+        run: aws s3 sync dist/ "s3://$S3_BUCKET/" --exclude "images/*" --no-progress
+
+      # 무효화가 끝날 때까지 기다린다. 초록 체크가 "실제로 새 버전이 서빙 중"을 뜻해야
+      # 배포 직후 확인이 의미가 있다. 보통 1~3분이다.
+      - name: CloudFront 캐시 무효화
+        run: |
+          id=$(aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*" --query 'Invalidation.Id' --output text)
+          echo "무효화 $id 대기 중..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --id "$id"
+          echo "https://jeommechu.co.kr 반영 완료"

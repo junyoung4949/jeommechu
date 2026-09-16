@@ -149,8 +149,15 @@ SPA 라우팅을 `403/404 → /index.html` 커스텀 오류 응답으로 처리�
 
 ## 재배포
 
+**프론트는 자동입니다.** `master` 에 올라가면 `.github/workflows/deploy.yml` 이 빌드 →
+S3 업로드 → 캐시 무효화까지 합니다. AWS 자격증명은 OIDC 로 그때그때 발급받으므로
+액세스 키는 어디에도 저장돼 있지 않습니다(역할: `jeommechu-github-deploy`).
+
+아래는 **인프라 수정 시의 수동 절차**입니다. 이쪽은 자동화하지 않았습니다 — 거의 안 바뀌는
+데다 잘못 배포하면 사이트 전체가 죽습니다.
+
 ```bash
-# 프론트
+# 프론트를 손으로 올려야 할 때 (워크플로가 막혔을 때만)
 npm run build
 aws s3 sync dist/ s3://jeommechu/ --exclude "images/*"
 aws cloudfront create-invalidation --distribution-id E2SSO86KP6P9W8 --paths "/*"
