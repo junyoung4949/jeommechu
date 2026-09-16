@@ -153,6 +153,30 @@ SPA 라우팅을 `403/404 → /index.html` 커스텀 오류 응답으로 처리�
 S3 업로드 → 캐시 무효화까지 합니다. AWS 자격증명은 OIDC 로 그때그때 발급받으므로
 액세스 키는 어디에도 저장돼 있지 않습니다(역할: `jeommechu-github-deploy`).
 
+### ⚠️ OIDC 신뢰정책의 `sub` 는 문서에 나오는 형식이 아닙니다
+
+GitHub 이 실제로 내려보내는 `sub` 클레임에는 **소유자·리포지토리의 숫자 ID 가 박혀 있습니다.**
+
+```
+repo:junyoung4949@131241164/jeommechu@1358390721:ref:refs/heads/master
+```
+
+AWS·GitHub 문서 예제의 `repo:<owner>/<repo>:ref:refs/heads/<branch>` 로 신뢰정책을 쓰면
+`Not authorized to perform sts:AssumeRoleWithWebIdentity` 로 거절당합니다. **오류 메시지가
+권한 문제처럼 보여서** 정책 내용이 아니라 IAM 권한을 의심하게 됩니다.
+
+신뢰정책에는 두 형식을 모두 넣어 뒀습니다. GitHub 이 형식을 되돌려도 배포가 멈추지 않습니다.
+
+막히면 추측하지 말고 CloudTrail 에서 실제 값을 읽으세요:
+
+```bash
+aws cloudtrail lookup-events --region ap-northeast-2 \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --max-results 1 --query 'Events[].CloudTrailEvent' --output text
+```
+
+`userIdentity.principalId` 끝부분이 곧 `sub` 입니다.
+
 아래는 **인프라 수정 시의 수동 절차**입니다. 이쪽은 자동화하지 않았습니다 — 거의 안 바뀌는
 데다 잘못 배포하면 사이트 전체가 죽습니다.
 
