@@ -4,11 +4,33 @@ import FilterCard, { type FilterState } from '../components/FilterCard/FilterCar
 import Avatar from '../components/Avatar/Avatar'
 import { fetchCategories, type Category } from '../api/categories'
 import { fetchRecommend, postAction, type RecommendResult } from '../api/recommend'
+import { menuShareUrl, shareMenuToKakao } from '../lib/kakaoShare'
 import styles from './MainPage.module.css'
 
 function iGa(word: string) {
   const code = word.charCodeAt(word.length - 1)
   return code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0 ? '이' : '가'
+}
+
+/**
+ * 카카오톡 말풍선 마크.
+ *
+ * `Icon` 에 넣지 않은 건 그쪽이 Material Symbols 전용이라서다 — 좌표계(`0 -960 960 960`)도
+ * 출처(Apache 2.0)도 다르다. 브랜드 마크를 섞으면 그 파일의 설명이 거짓이 된다.
+ */
+function KakaoBubble() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12 0C5.373 0 0 4.243 0 9.48c0 3.358 2.211 6.305 5.539 7.972-.182.639-1.17 4.018-1.21 4.288 0 0-.024.204.109.282a.36.36 0 0 0 .28.02c.377-.053 4.36-2.85 5.05-3.334.734.104 1.49.158 2.232.158 6.627 0 12-4.243 12-9.48C24 4.243 18.627 0 12 0" />
+    </svg>
+  )
 }
 
 interface Props {
@@ -37,6 +59,8 @@ export default function MainPage({ onLoginClick }: Props) {
   const [result, setResult] = useState<RecommendResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  /** 공유 결과 안내. 추천 실패(error)와 섞으면 엉뚱한 자리에 뜬다. */
+  const [shareMsg, setShareMsg] = useState('')
 
   useEffect(() => {
     fetchCategories().then(setCategories).catch(() => {
@@ -85,6 +109,7 @@ export default function MainPage({ onLoginClick }: Props) {
   async function handleChosen() {
     if (!result) return
     await postAction(result.recommendationId, 'chosen').catch(() => {})
+    setShareMsg('')
     fireConfetti()
     // 홈으로 되돌리지 않는다. 확정 화면에 머물러야 공유할 수 있다.
     setPhase('decided')
@@ -101,21 +126,32 @@ export default function MainPage({ onLoginClick }: Props) {
     setPhase('home')
     setResult(null)
     setError('')
+    setShareMsg('')
   }
 
-  function handleShare() {
+  /** 카카오톡 공유창을 연다. 카드는 SDK 로 직접 조립한다 (`lib/kakaoShare.ts` 참고). */
+  async function handleKakaoShare() {
+    if (!result) return
+    setShareMsg('')
+    try {
+      await shareMenuToKakao(result.menu)
+    } catch {
+      // 원인(키 미설정/도메인 미등록/네트워크)을 사용자가 구분할 방법은 없다.
+      // 대신 바로 쓸 수 있는 대안을 가리킨다.
+      setShareMsg('카카오톡 공유를 열지 못했어요. 링크 복사를 이용해주세요.')
+    }
+  }
+
+  /** 카카오톡을 안 쓰는 사람용. 링크는 /menus/{id} 가 아니라 /share/{id} 다 — 그쪽만 OG 태그가 있다. */
+  async function handleCopyLink() {
     if (!result) return
     const text = `오늘 점심은 ${result.menu.name}${iGa(result.menu.name)} 좋겠군요 — 점메추`
-    // /menus/{id} 가 아니라 /share/{id} 를 보낸다.
-    // 메신저 크롤러는 JS 를 실행하지 않아 SPA 경로에서는 메뉴별 미리보기를 못 읽는다.
-    // /share/{id} 는 서버가 OG 태그를 박아 주고, 사람은 곧바로 /menus/{id} 로 넘어간다.
-    const url = `${window.location.origin}/share/${result.menu.id}`
-
-    if (navigator.share) {
-      navigator.share({ title: '점메추', text, url })
-    } else {
-      navigator.clipboard.writeText(`${text}\n${url}`)
-      alert('클립보드에 복사됐어요!')
+    try {
+      await navigator.clipboard.writeText(`${text}\n${menuShareUrl(result.menu)}`)
+      setShareMsg('링크를 복사했어요!')
+    } catch {
+      // clipboard 는 https 아니면 막힌다.
+      setShareMsg('링크를 복사하지 못했어요. 주소창에서 직접 복사해주세요.')
     }
   }
 
@@ -202,9 +238,14 @@ export default function MainPage({ onLoginClick }: Props) {
           {menuVisual(result.menu)}
 
           <div className={styles.decidedBtns}>
-            <button className={styles.shareBtn} onClick={handleShare}>
-              ↗ 친구에게 공유하기
+            <button className={styles.kakaoBtn} onClick={handleKakaoShare}>
+              <KakaoBubble />
+              카카오톡으로 공유하기
             </button>
+            <button className={styles.copyBtn} onClick={handleCopyLink}>
+              링크 복사
+            </button>
+            {shareMsg && <p className={styles.shareMsg}>{shareMsg}</p>}
             <button className={styles.restartBtn} onClick={handleRestart}>
               다시 고르기
             </button>
