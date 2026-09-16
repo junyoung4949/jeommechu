@@ -10,6 +10,8 @@ name: deploy
 on:
   push:
     branches: [master]
+    # 문서만 고쳤는데 빌드·업로드·무효화가 도는 건 낭비다. 무효화는 건당 과금이기도 하다.
+    paths-ignore: ['**.md']
   # 코드 변경 없이 다시 배포하고 싶을 때 (예: 시크릿만 바꿨을 때) 수동으로 돌린다.
   workflow_dispatch:
 
