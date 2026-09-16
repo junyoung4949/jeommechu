@@ -190,22 +190,55 @@
   margin-bottom: 16px;
 }
 
-/* 공유가 이 화면의 주행동이라 가장 강하게 준다. */
-.shareBtn {
+/*
+ * 공유가 이 화면의 주행동이다. 브랜드 색(--color-primary)이 아니라 카카오 노랑을 쓰는 건
+ * 이 버튼이 "카카오톡이 열린다"는 약속을 하기 때문이다 — 색이 곧 예고다.
+ * #FEE500 / #191600 은 카카오 디자인 가이드의 지정값이라 임의로 바꾸지 않는다.
+ */
+.kakaoBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   padding: 14px;
   border: none;
   border-radius: 12px;
-  background: var(--color-primary);
-  color: #fff;
+  background: #fee500;
+  color: #191600;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 12px var(--color-primary-shadow-soft);
+  box-shadow: 0 4px 12px rgba(254, 229, 0, 0.35);
   transition: opacity 0.15s;
 }
 
-.shareBtn:hover {
+.kakaoBtn:hover {
   opacity: 0.9;
+}
+
+.copyBtn {
+  padding: 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+  color: #444;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.copyBtn:hover {
+  border-color: #bbb;
+  color: #111;
+}
+
+/* 성공("복사했어요")과 실패를 한 자리에서 알린다. 짧아서 색으로 구분하지 않는다. */
+.shareMsg {
+  margin: -2px 0 2px;
+  font-size: 13px;
+  color: #888;
+  text-align: center;
 }
 
 .restartBtn {
