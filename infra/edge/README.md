@@ -52,15 +52,16 @@ GOOGLE_REDIRECT_URIS = https://jeommechu.co.kr/oauth/google,http://localhost:517
 `startsWith` 로 바꾸면 `https://jeommechu.co.kr.evil.com/oauth/kakao` 가 통과합니다.
 클라이언트가 보낸 값을 그대로 토큰 교환에 넣는 자리라 느슨하면 안 됩니다.
 
-### ⚠️ 환경변수 하나에 여러 값을 넣어도 코드가 쪼개야 의미가 있습니다
+### ⚠️ 이름이 복수형인 건 값이 목록이라는 뜻입니다
 
 한 번 이런 일이 있었습니다 — 단수형 `KAKAO_REDIRECT_URI` 에 쉼표로 두 주소를 넣었는데,
 그때 코드는 값을 **통째로** 공급자에게 보냈습니다. 그래서 `redirect_uri` 가
 `https://a.com/cb,http://b.com/cb` 가 되어 **프로덕션 로그인까지 멈췄습니다.**
 
-`allowedRedirectUris()` 는 복수형 이름을 먼저 보고 없으면 옛 단수형으로 폴백합니다.
-대시보드 수정과 배포 순서가 어긋나도 로그인이 끊기지 않게 하려는 것이라, 양쪽에
-복수형이 자리잡으면 폴백 줄은 지워도 됩니다.
+지금은 `allowedRedirectUris()` 가 쉼표로 쪼갭니다. 반대로 주소를 **하나만** 넣으면
+나머지 환경의 로그인이 조용히 막히니, 환경을 늘릴 때마다 이 값도 같이 늘려야 합니다.
+
+> 단수형(`*_REDIRECT_URI`)은 더 이상 읽지 않습니다. 대시보드에 남아 있어도 무시됩니다.
 
 ### ⚠️ 교환 실패 사유를 버리지 마세요
 
