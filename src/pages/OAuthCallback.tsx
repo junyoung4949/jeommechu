@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { kakaoLogin, googleLogin } from '../api/auth'
+import { oauthRedirectUri } from '../lib/oauth'
 
 interface Props {
   provider: 'kakao' | 'google'
@@ -24,7 +25,8 @@ export default function OAuthCallback({ provider, onSuccess }: Props) {
 
     const loginFn = provider === 'kakao' ? kakaoLogin : googleLogin
 
-    loginFn(code)
+    // 인가 요청 때와 **같은 함수**로 만든다. 값이 한 글자라도 다르면 교환이 거절된다.
+    loginFn(code, oauthRedirectUri(provider))
       .then(({ accessToken }) => {
         onSuccess(accessToken)
         navigate('/', { replace: true })
