@@ -11,6 +11,8 @@ import { hasSessionHint } from './api/client'
 
 export default function App() {
   const [showLogin, setShowLogin] = useState(false)
+  /** 소셜 로그인이 콜백에서 실패했을 때의 문구. 모달을 다시 열면서 함께 넘긴다. */
+  const [loginError, setLoginError] = useState('')
   // 로그인 여부와 프로필(닉네임·사진)을 한 상태로 다룬다. null 이면 비로그인.
   const [me, setMe] = useState<MeResponse | null>(null)
 
@@ -26,8 +28,23 @@ export default function App() {
       .catch(() => setMe(null))
   }, [])
 
-  function handleLoginSuccess(_token: string) {
+  /** 모달을 닫을 때 에러 문구도 함께 비운다. 남겨두면 다음에 열 때 옛 문구가 뜬다. */
+  function closeLogin() {
     setShowLogin(false)
+    setLoginError('')
+  }
+
+  /**
+   * 소셜 로그인이 콜백 화면에서 실패했을 때. 콜백은 곧바로 홈으로 이동하므로,
+   * 홈이 그려질 때 모달이 이 문구와 함께 열려 있게 된다.
+   */
+  function handleLoginFailure(message: string) {
+    setLoginError(message)
+    setShowLogin(true)
+  }
+
+  function handleLoginSuccess(_token: string) {
+    closeLogin()
     // 토큰만 받은 상태라 프로필은 아직 모른다. 실패해도 로그인 자체는 유효하다.
     getMe()
       .then(setMe)
@@ -51,7 +68,8 @@ export default function App() {
       {page}
       {showLogin && (
         <LoginModal
-          onClose={() => setShowLogin(false)}
+          initialError={loginError}
+          onClose={closeLogin}
           onSuccess={handleLoginSuccess}
         />
       )}
@@ -63,11 +81,23 @@ export default function App() {
       <Routes>
         <Route
           path="/oauth/kakao"
-          element={<OAuthCallback provider="kakao" onSuccess={handleLoginSuccess} />}
+          element={
+            <OAuthCallback
+              provider="kakao"
+              onSuccess={handleLoginSuccess}
+              onError={handleLoginFailure}
+            />
+          }
         />
         <Route
           path="/oauth/google"
-          element={<OAuthCallback provider="google" onSuccess={handleLoginSuccess} />}
+          element={
+            <OAuthCallback
+              provider="google"
+              onSuccess={handleLoginSuccess}
+              onError={handleLoginFailure}
+            />
+          }
         />
         <Route
           path="/menus/new"
