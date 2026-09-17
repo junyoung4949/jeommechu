@@ -404,25 +404,49 @@ async function deleteCategory(ctx: AdminCtx, id: number): Promise<Response> {
   if (denied) return denied;
   const { db, origin } = ctx;
 
-  // menu_categories 의 외래키가 ON DELETE RESTRICT 라 DB 가 막아준다. 다만 그대로 두면
-  // 500 이 나가므로, 몇 개가 걸려 있는지 세어 쓸모 있는 메시지로 바꿔 준다.
-  const { count } = await db
-    .from("menu_categories")
-    .select("menu_id", { count: "exact", head: true })
-    .eq("category_id", id);
-  if ((count ?? 0) > 0) {
+  const { data: cat } = await db.from("categories").select("id, name").eq("id", id).maybeSingle();
+  if (!cat) return fail("NOT_FOUND", "존재하지 않는 카테고리입니다.", origin, { id });
+
+  const { data: links } = await db.from("menu_categories").select("menu_id").eq("category_id", id);
+  const menuIds = (links ?? []).map((l) => l.menu_id as number);
+
+  // 이 카테고리를 빼면 **카테고리가 하나도 안 남는** 메뉴를 센다.
+  // 그런 메뉴는 카테고리 필터로 영영 찾을 수 없게 되므로 지우기 전에 알려줘야 한다.
+  let orphaned = 0;
+  if (menuIds.length > 0) {
+    const { data: all } = await db
+      .from("menu_categories")
+      .select("menu_id")
+      .in("menu_id", menuIds);
+    const byMenu = new Map<number, number>();
+    for (const r of all ?? []) {
+      byMenu.set(r.menu_id as number, (byMenu.get(r.menu_id as number) ?? 0) + 1);
+    }
+    orphaned = menuIds.filter((m) => (byMenu.get(m) ?? 0) <= 1).length;
+  }
+
+  const body = (await ctx.readJson(ctx.req)) ?? {};
+  if (menuIds.length > 0 && body.confirmCascade !== true) {
+    const tail = orphaned > 0
+      ? ` 그중 ${orphaned}개는 카테고리가 하나도 남지 않습니다.`
+      : "";
     return fail(
       "CATEGORY_IN_USE",
-      `메뉴 ${count}개가 이 카테고리에 걸려 있어 지울 수 없어요.`,
+      `메뉴 ${menuIds.length}개에서 이 카테고리가 빠집니다.${tail}`,
       origin,
-      { menus: count },
+      { menus: menuIds.length, orphaned },
     );
   }
 
-  const { data, error } = await db.from("categories").delete().eq("id", id).select("id").maybeSingle();
+  // 매핑 행은 외래키가 ON DELETE CASCADE 라 DB 가 같은 트랜잭션에서 함께 지운다.
+  const { error } = await db.from("categories").delete().eq("id", id);
   if (error) throw error;
-  if (!data) return fail("NOT_FOUND", "존재하지 않는 카테고리입니다.", origin, { id });
-  return reply({ status: 200, body: { deleted: id }, origin });
+
+  return reply({
+    status: 200,
+    body: { deleted: id, name: cat.name, detachedMenus: menuIds.length, orphanedMenus: orphaned },
+    origin,
+  });
 }
 
 /* ───────────────────────────── 조회 ───────────────────────────── */

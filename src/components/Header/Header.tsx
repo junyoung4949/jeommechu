@@ -22,6 +22,7 @@ export default function Header({ onLoginClick, me, onLogout, onMeChange }: Props
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const onCreatePage = pathname === '/menus/new'
+  const onAdminPage = pathname === '/admin'
 
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -126,6 +127,17 @@ export default function Header({ onLoginClick, me, onLogout, onMeChange }: Props
                 </div>
 
                 {error && <p className={styles.menuError}>{error}</p>}
+
+                {/* 매니저에게만 보인다. 감추는 건 편의일 뿐 — 주소를 직접 쳐도 서버가 막는다. */}
+                {me.isManager && !onAdminPage && (
+                  <button
+                    className={styles.menuItem}
+                    onClick={() => { setOpen(false); navigate('/admin') }}
+                    role="menuitem"
+                  >
+                    관리자
+                  </button>
+                )}
 
                 <button
                   className={styles.menuItem}

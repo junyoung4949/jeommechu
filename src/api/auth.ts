@@ -19,6 +19,11 @@ export interface MeResponse {
    * 둘 다 없으면 null — 이 경우 클라이언트는 닉네임 이니셜을 그린다.
    */
   profileImageUrl: string | null
+  /**
+   * 관리자 메뉴를 보여줄지 판단하는 데만 쓴다.
+   * **권한 검사가 아니다** — 실제 차단은 서버가 매 요청마다 한다.
+   */
+  isManager: boolean
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
