@@ -9,6 +9,7 @@
 // 인증 불필요 또는 선택이다. 인증은 라우트별로 직접 검사한다.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { handleAdminRoute } from "./admin.ts";
 import {
   clearCookie,
   corsHeaders,
@@ -73,6 +74,8 @@ interface Viewer {
   nickname: string;
   /** 소셜 공급자가 준 외부 URL 이거나 avatars 버킷 URL. 둘 다 없으면 null. */
   avatarUrl: string | null;
+  /** 카테고리·이형어·메뉴 관리 권한 (명세의 "매니저"). */
+  isManager: boolean;
 }
 
 async function resolveViewer(token: string | null): Promise<Viewer | null> {
@@ -82,7 +85,7 @@ async function resolveViewer(token: string | null): Promise<Viewer | null> {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("user_no, nickname, avatar_url")
+    .select("user_no, nickname, avatar_url, is_manager")
     .eq("id", data.user.id)
     .maybeSingle();
 
@@ -93,7 +96,20 @@ async function resolveViewer(token: string | null): Promise<Viewer | null> {
     email: data.user.email ?? null,
     nickname: profile.nickname,
     avatarUrl: profile.avatar_url ?? null,
+    isManager: profile.is_manager === true,
   };
+}
+
+/**
+ * 메뉴 사진으로 허용하는 URL 접두사.
+ * 클라이언트가 보낸 주소를 그대로 믿으면 남의 서버 이미지를 우리 메뉴로 걸 수 있다 (0-3).
+ */
+function menuImagePrefixes(): string[] {
+  const cdn = Deno.env.get("MENU_IMAGE_CDN_BASE");
+  return [
+    publicUrlPrefix(IMAGE_BUCKET),
+    ...(cdn ? [cdn.replace(/\/+$/, "") + "/"] : []),
+  ];
 }
 
 /** 0-1: 사용자 표현. /auth/me 와 프로필 사진 응답이 같은 모양을 쓰도록 한곳에 모은다. */
@@ -373,7 +389,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cookies = parseCookies(req);
   const token = bearerToken(req, cookies);
 
+  // resolveViewer 는 DB 를 왕복한다. 한 요청 안에서 여러 번 부르지 않도록 한 번만 계산한다.
+  let viewerOnce: Promise<Viewer | null> | null = null;
+  const getViewer = () => (viewerOnce ??= resolveViewer(token));
+
   try {
+    // 관리자 라우트를 먼저 본다. PATCH/DELETE /menus/{id} 는 아래 공개 라우트의
+    // "GET 아니면 METHOD_NOT_ALLOWED" 에 먼저 걸려버리기 때문이다.
+    // 맡을 경로가 아니면 null 이 와서 그대로 아래로 흘러간다.
+    const handled = await handleAdminRoute({
+      req,
+      seg,
+      origin,
+      db: admin,
+      getViewer,
+      readJson,
+      budgetTiers: BUDGET_TIERS,
+      imagePrefixes: menuImagePrefixes(),
+    });
+    if (handled) return handled;
+
     // ---- GET /categories ------------------------------------------------
     if (seg[0] === "categories" && seg.length === 1) {
       if (req.method !== "GET") return fail("METHOD_NOT_ALLOWED", "허용되지 않은 메서드입니다.", origin);
@@ -419,7 +454,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return fail("VALIDATION_ERROR", "잘못된 요청입니다.", origin, { fields: [...new Set(fields)] });
       }
 
-      const viewer = await resolveViewer(token);
+      const viewer = await getViewer();
       const outgoing: string[] = [];
       let uid: string | null = null;
       if (!viewer) {
@@ -463,7 +498,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         });
       }
 
-      const viewer = await resolveViewer(token);
+      const viewer = await getViewer();
       const uid = viewer ? null : (cookies["uid"] && UUID_RE.test(cookies["uid"]) ? cookies["uid"] : null);
 
       const { data, error } = await admin.rpc("record_recommendation_action", {
@@ -603,7 +638,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       // GET /auth/me
       if (seg[1] === "me" && seg.length === 2 && req.method === "GET") {
-        const viewer = await resolveViewer(token);
+        const viewer = await getViewer();
         if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
         return reply({ status: 200, body: viewerBody(viewer), origin });
       }
@@ -615,7 +650,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           return fail("METHOD_NOT_ALLOWED", "허용되지 않은 메서드입니다.", origin);
         }
 
-        const viewer = await resolveViewer(token);
+        const viewer = await getViewer();
         if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
 
         let nextUrl: string | null = null;
@@ -655,7 +690,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       // POST /auth/logout
       if (seg[1] === "logout" && seg.length === 2 && req.method === "POST") {
-        const viewer = await resolveViewer(token);
+        const viewer = await getViewer();
         if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
         // 세션을 폐기하면 해당 refreshToken 도 함께 무효화된다.
         if (token) await admin.auth.admin.signOut(token, "local");
@@ -702,7 +737,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (seg[0] === "images" && seg.length === 1) {
       if (req.method !== "POST") return fail("METHOD_NOT_ALLOWED", "허용되지 않은 메서드입니다.", origin);
 
-      const viewer = await resolveViewer(token);
+      const viewer = await getViewer();
       if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
 
       const part = await readImagePart(req, origin, MAX_IMAGE_BYTES);
@@ -725,7 +760,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (seg[0] === "menus" && seg.length === 1) {
       if (req.method !== "POST") return fail("METHOD_NOT_ALLOWED", "허용되지 않은 메서드입니다.", origin);
 
-      const viewer = await resolveViewer(token);
+      const viewer = await getViewer();
       if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
 
       const body = await readJson(req);
@@ -762,13 +797,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (imageUrl === null) {
         fields.push("imageUrl");
       } else {
-        const allowedPrefixes = [
-          publicUrlPrefix(IMAGE_BUCKET),
-          ...(Deno.env.get("MENU_IMAGE_CDN_BASE")
-            ? [Deno.env.get("MENU_IMAGE_CDN_BASE")!.replace(/\/+$/, "") + "/"]
-            : []),
-        ];
-        if (!allowedPrefixes.some((p) => imageUrl.startsWith(p))) fields.push("imageUrl");
+        if (!menuImagePrefixes().some((p) => imageUrl.startsWith(p))) fields.push("imageUrl");
       }
 
       if (fields.length > 0) {

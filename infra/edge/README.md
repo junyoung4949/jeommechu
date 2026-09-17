@@ -12,8 +12,55 @@
 
 | 파일 | 역할 |
 |---|---|
-| `index.ts` | 라우터 + 모든 엔드포인트 |
+| `index.ts` | 라우터 + 공개 엔드포인트 |
+| `admin.ts` | 관리자 전용 엔드포인트 |
 | `http.ts` | 응답·쿠키·CORS·에러코드 헬퍼 |
+
+## 관리자 엔드포인트
+
+| 메서드 | 경로 | 하는 일 |
+|---|---|---|
+| `GET` | `/admin/menus` | 관리자 목록 (사진·등록자·카테고리·이형어·성적을 한 응답에) |
+| `GET` | `/admin/stats` | 메뉴별 추천/채택/넘김 집계 |
+| `PATCH` | `/menus/{id}` | 이름·카테고리·예산·인원·설명·사진 수정 |
+| `DELETE` | `/menus/{id}` | 메뉴 삭제 |
+| `POST` | `/menus/{id}/aliases` | 이형어 추가 |
+| `DELETE` | `/menus/{id}/aliases/{alias}` | 이형어 해제 |
+| `POST` `PATCH` `DELETE` | `/categories[/{id}]` | 카테고리 추가·이름변경·삭제 |
+
+전부 `requireManager()` 를 통과해야 합니다 — 비로그인 `401`, 매니저 아님 `403`.
+
+권한은 `profiles.is_manager` 로 켭니다:
+
+```sql
+update profiles set is_manager = true where user_no = 13;
+```
+
+### ⚠️ 문지기가 RLS 가 아니라 코드에 있습니다
+
+DB 에는 이미 `is_manager()` 기반 RLS 정책이 깔려 있습니다(`menus` 수정·삭제,
+`menu_aliases`·`categories`·`menu_categories`). **그런데 이 함수는 service role 키로 붙어
+RLS 를 통째로 우회합니다.** 서버를 거치는 한 그 정책들은 잠들어 있습니다.
+
+그래서 검사를 `admin.ts` 의 `requireManager()` 한 줄로 눈에 보이게 뒀습니다. RLS 는
+그대로 둡니다 — 나중에 anon 키로 DB 에 직접 붙는 경로가 생기면 두 번째 자물쇠로 일합니다.
+
+### ⚠️ 메뉴를 지우면 추천 기록이 함께 사라집니다
+
+```
+recommendations_menu_id_fkey  FOREIGN KEY (menu_id) REFERENCES menus(id) ON DELETE CASCADE
+```
+
+김밥(추천 42건)을 지우면 그 42건이 같이 없어지고 **과거 통계가 소급해서 바뀝니다.**
+되돌릴 수 없어서 `DELETE /menus/{id}` 는 본문에 `confirmCascade: true` 가 없으면
+`CASCADE_NOT_CONFIRMED` 로 거절하고 몇 건이 사라지는지 알려줍니다.
+
+이형어는 `menus` 와 외래키로 묶여 있지 않고 `canonical` 문자열로만 연결돼 있어서,
+메뉴 삭제 시 코드가 직접 지웁니다. 안 지우면 어디에도 안 걸리는 이형어가 남아 나중에
+그 이름으로 등록하려는 사람을 계속 막습니다.
+
+> 기록을 지키려면 소프트 삭제(`menus.deleted_at`)로 바꿔야 합니다. 그러면 `recommend_menu`
+> 를 비롯해 메뉴를 읽는 모든 곳에 제외 조건이 필요합니다.
 
 ## 배포
 
