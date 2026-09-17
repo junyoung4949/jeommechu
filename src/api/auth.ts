@@ -37,13 +37,18 @@ export async function register(email: string, password: string): Promise<Registe
   return data
 }
 
-export async function kakaoLogin(code: string): Promise<AuthResponse> {
-  const { data } = await client.post<AuthResponse>('/auth/kakao', { code })
+/**
+ * redirectUri 는 인가 요청 때 쓴 값을 그대로 다시 보낸다. 서버가 이 값으로 토큰을
+ * 교환해야 공급자가 받아준다 (`lib/oauth.ts` 참고). 서버는 허용 목록으로 검증하므로
+ * 목록에 없는 값을 보내면 REDIRECT_URI_NOT_ALLOWED 로 거절된다.
+ */
+export async function kakaoLogin(code: string, redirectUri: string): Promise<AuthResponse> {
+  const { data } = await client.post<AuthResponse>('/auth/kakao', { code, redirectUri })
   return data
 }
 
-export async function googleLogin(code: string): Promise<AuthResponse> {
-  const { data } = await client.post<AuthResponse>('/auth/google', { code })
+export async function googleLogin(code: string, redirectUri: string): Promise<AuthResponse> {
+  const { data } = await client.post<AuthResponse>('/auth/google', { code, redirectUri })
   return data
 }
 
