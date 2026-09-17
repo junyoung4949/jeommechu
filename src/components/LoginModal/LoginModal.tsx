@@ -6,15 +6,22 @@ import styles from './LoginModal.module.css'
 interface Props {
   onClose: () => void
   onSuccess: (token: string) => void
+  /**
+   * 소셜 로그인이 콜백 화면에서 실패했을 때 넘어오는 문구.
+   * 실패하면 홈으로 돌아오면서 이 모달이 다시 열리므로, 이메일 로그인 실패와 **같은 자리**에
+   * 같은 모양으로 보여준다.
+   */
+  initialError?: string
 }
 
 type Mode = 'login' | 'register'
 
-export default function LoginModal({ onClose, onSuccess }: Props) {
+export default function LoginModal({ onClose, onSuccess, initialError = '' }: Props) {
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  // 모달은 열릴 때마다 새로 마운트되므로 초기값으로 받는 것으로 충분하다.
+  const [error, setError] = useState(initialError)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
