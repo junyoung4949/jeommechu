@@ -119,6 +119,9 @@ function viewerBody(viewer: Viewer, avatarUrl: string | null = viewer.avatarUrl)
     email: viewer.email,
     nickname: viewer.nickname,
     profileImageUrl: avatarUrl,
+    // 클라이언트가 관리자 메뉴를 보여줄지 판단하는 데 쓴다.
+    // **화면을 감추는 용도일 뿐 권한 검사가 아니다** — 실제 차단은 서버가 매 요청마다 한다.
+    isManager: viewer.isManager,
   };
 }
 
