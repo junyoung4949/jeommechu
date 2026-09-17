@@ -271,15 +271,12 @@ async function completeLogin(
  * 공급자 콘솔에 등록해 둔 redirect_uri 목록. 쉼표로 구분한다.
  *
  * 환경이 배포 하나였을 때는 값도 하나면 됐지만, 로컬 개발까지 받으려면 여러 개가 필요하다.
- *
- * 복수형 이름을 먼저 보고 없으면 옛 단수형으로 폴백한다 — 대시보드 수정과 이 코드의 배포
- * 순서가 어긋나도 로그인이 끊기지 않게 하려는 것이다. 양쪽에 복수형이 자리잡으면
- * 폴백 줄은 지워도 된다.
+ * **이름이 복수형인 건 값이 목록이라는 뜻이다** — 단수형으로 착각해 주소 하나만 넣으면
+ * 나머지 환경의 로그인이 조용히 막힌다.
  */
 function allowedRedirectUris(provider: "google" | "kakao"): string[] {
   const prefix = provider === "google" ? "GOOGLE" : "KAKAO";
-  const raw = Deno.env.get(`${prefix}_REDIRECT_URIS`) ??
-    Deno.env.get(`${prefix}_REDIRECT_URI`) ?? "";
+  const raw = Deno.env.get(`${prefix}_REDIRECT_URIS`) ?? "";
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
