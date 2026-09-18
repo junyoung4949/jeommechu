@@ -717,6 +717,7 @@ function Bars({ data, mode, labelStep = 1 }: { data: BarDatum[]; mode: Mode; lab
 }
 
 const PRESETS: { label: string; days: number | null }[] = [
+  { label: '오늘', days: 1 },
   { label: '최근 7일', days: 7 },
   { label: '최근 30일', days: 30 },
   { label: '전체', days: null },
@@ -833,7 +834,7 @@ function StatsTab() {
           <Trend daily={fillDays(data.daily, from, to)} mode={mode} />
 
           <div className={styles.rhythm}>
-            <Hourly rows={data.hourly} mode={mode} />
+            <Hourly rows={data.hourly} mode={mode} days={data.daily.length} />
             <Weekday rows={data.weekday} mode={mode} />
           </div>
 
@@ -957,13 +958,20 @@ function Trend({ daily, mode }: { daily: DailyRow[]; mode: Mode }) {
 /**
  * 시간대별. 점심 메뉴를 고르는 서비스라 **가장 중요한 축**이다.
  * 하루가 24칸으로 늘 고정이라, 기간을 바꿔도 같은 자리를 비교하게 된다.
+ *
+ * ⚠️ 이건 **기간 안의 모든 날을 같은 시간끼리 합친 것**이다 — 오늘 하루의 시간별
+ * 추이가 아니다. 기본 기간이 30일이라 `12시` 칸은 서른 번의 점심시간 합계가 된다.
+ * 그 사실이 화면에 안 보이면 오늘 숫자로 착각하게 되므로, 하루를 넘는 기간에는
+ * 며칠을 합친 것인지 헤더에 같이 적는다. 오늘만 보려면 기간을 '오늘'로 좁힌다.
  */
-function Hourly({ rows, mode }: { rows: HourRow[]; mode: Mode }) {
+function Hourly({ rows, mode, days }: { rows: HourRow[]; mode: Mode; days: number }) {
   return (
     <div className={styles.panelBox}>
       <header>
         <h3>시간대별</h3>
-        <span>KST · 피크 {peakOf(rows, (r) => `${r.hour}시`)}</span>
+        <span>
+          KST{days > 1 ? ` · ${days}일 합계` : ''} · 피크 {peakOf(rows, (r) => `${r.hour}시`)}
+        </span>
       </header>
       <Bars
         mode={mode}
