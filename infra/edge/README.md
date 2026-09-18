@@ -21,7 +21,7 @@
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
 | `GET` | `/admin/menus` | 관리자 목록 (사진·등록자·카테고리·이형어·성적을 한 응답에) |
-| `GET` | `/admin/stats` | 메뉴별 추천/채택/넘김 집계 |
+| `GET` | `/admin/stats` | 기간별 집계 — 메뉴별 성적 · 일별 추이 · 신규 가입자 활동 |
 | `PATCH` | `/menus/{id}` | 이름·카테고리·예산·인원·설명·사진 수정 |
 | `DELETE` | `/menus/{id}` | 메뉴 삭제 |
 | `POST` | `/menus/{id}/aliases` | 이형어 추가 |
@@ -29,6 +29,34 @@
 | `POST` `PATCH` `DELETE` | `/categories[/{id}]` | 카테고리 추가·이름변경·삭제 |
 
 전부 `requireManager()` 를 통과해야 합니다 — 비로그인 `401`, 매니저 아님 `403`.
+
+### `GET /admin/stats?from=&to=`
+
+`from`·`to` 는 `YYYY-MM-DD` 이고 **양 끝을 포함**합니다. 둘 다 생략할 수 있으며, 생략하면
+그쪽 방향으로 제한이 없습니다(= 전체 기간). 집계는 `admin_stats_range` 함수가 합니다.
+
+**경계는 KST 로 자릅니다.** UTC 로 자르면 한국 시간 오전 9시 이전의 활동이 전날로 밀려,
+관리자가 화면에서 고른 날짜와 숫자가 어긋납니다. 하루 단위 버킷도 같은 기준입니다.
+
+```json
+{ "range": {...},
+  "total":   { "recommended": 224, "chosen": 15, "skipped": 47, "noResponse": 162,
+               "loggedIn": 189, "anonymous": 35 },
+  "perMenu": [...],
+  "daily":   [ { "day": "2026-09-10", ...counts, "loggedIn": 110, "anonymous": 0, "signups": 0 } ],
+  "hourly":  [ { "hour": 0, ...counts } ],   // 0~23시(KST), 빈 시간도 0으로 24칸 전부
+  "weekday": [ { "dow": 1, ...counts } ],    // 1=월 … 7=일 (isodow), 7칸 전부
+  "users":   { "signups": 1, "totalUsers": 3, "activated": 0, "returning": 0,
+               "avgActiveDays": 0, "rows": [...] } }
+```
+
+**`loggedIn + anonymous === recommended` 가 항상 성립합니다.** 비로그인을 `uid is not null` 이
+아니라 **`user_id is null`** 로 세기 때문입니다. 두 컬럼이 다 채워진 행이 생겨도 합이 어긋나지
+않아, 화면에서 막대 하나로 쌓아도 됩니다.
+
+`users` 는 **그 기간에 가입한 사람들**과 그들의 활동입니다. 활동은 `created_at >= 가입일`
+조건으로 셉니다 — 로그인 시 `claim_anonymous_history` 가 비로그인 이력을 계정으로 옮기기
+때문에, 조건이 없으면 가입 전 활동까지 신규 회원의 성적으로 잡혀 활성도가 부풀려집니다.
 
 권한은 `profiles.is_manager` 로 켭니다:
 

@@ -367,6 +367,166 @@
 .fillLow { background: var(--warn); }
 .pct { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink2); width: 42px; text-align: right; }
 
+/* ── 기간 고르기 ─────────────────────────────────── */
+.rangeBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.presets { display: flex; gap: 4px; }
+.preset {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.preset:hover { color: var(--ink2); border-color: var(--ink2); }
+.preset[aria-pressed='true'] {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+.dateField { display: flex; align-items: center; gap: 6px; }
+.dateField > span { font-size: 12px; color: var(--muted); }
+.dateField input {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink2);
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fafaf8;
+}
+.inlineSelect {
+  margin-left: auto;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink2);
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fafaf8;
+}
+
+/* 세 조각의 합이 추천 수라, 길이 비교만으로 메뉴의 성격이 읽힌다. */
+.stack {
+  display: flex;
+  height: 7px;
+  min-width: 130px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--raised);
+}
+.stack > span { flex-basis: 0; min-width: 0; }
+.segChosen { background: var(--good); }
+.segSkipped { background: var(--warn); }
+.segNone { background: #d8d6cc; }
+/* 신원 기준. 행동 기준과 동시에 나오지 않으므로 색이 겹쳐도 헷갈리지 않는다. */
+.segMember { background: var(--color-primary); }
+.segGuest { background: #c4c1b4; }
+
+/* ── 그래프 공통 조작 줄 ─────────────────────────── */
+.chartBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.chartHint { font-size: 12px; color: var(--muted); }
+.legend {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink2);
+}
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* 시간대와 요일은 나란히 봐야 "언제"가 한눈에 잡힌다. */
+.rhythm { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 16px; }
+
+.rateCell { display: flex; align-items: baseline; gap: 6px; }
+.rateCell b { font-size: 13px; font-variant-numeric: tabular-nums; min-width: 38px; }
+
+/* ── 일별 추이 ───────────────────────────────────── */
+.trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 116px;
+  padding: 16px 16px 0;
+}
+.trendCol {
+  flex: 1 1 0;
+  min-width: 3px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+/* 칸이 적을 때(요일 7개) 막대가 벽처럼 두꺼워지지 않게 상한을 둔다. */
+.trendBar {
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 34px;
+  margin: 0 auto;
+}
+.trendBar > span { flex-basis: 0; min-height: 0; }
+/* 가입이 없는 날에도 자리를 잡아 둔다. 안 그러면 점이 생길 때마다 막대가 아래로 밀린다. */
+.trendDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin: 0 auto 4px;
+  background: transparent;
+}
+.trendDot[data-on] { background: var(--color-primary); }
+.trendDays {
+  display: flex;
+  gap: 2px;
+  padding: 6px 16px 14px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.trendDays > span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ── 유입 ───────────────────────────────────────── */
+.innerCards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.innerCards .card { background: var(--raised); border-color: var(--line-soft); }
+.innerCards .card strong { font-size: 22px; }
+
 /* ── 카테고리 ───────────────────────────────────── */
 .cats { max-width: 640px; }
 .catRow {
@@ -421,5 +581,9 @@
 @media (max-width: 1080px) {
   .split { grid-template-columns: 1fr; }
   .editCol { position: static; max-height: none; }
-  .cards { grid-template-columns: repeat(2, 1fr); }
+  .cards,
+  .innerCards { grid-template-columns: repeat(2, 1fr); }
+  .inlineSelect { margin-left: 0; }
+  .rhythm { grid-template-columns: 1fr; }
+  .legend { margin-left: 0; }
 }

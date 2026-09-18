@@ -511,43 +511,54 @@ async function listMenusForAdmin(ctx: AdminCtx): Promise<Response> {
   return reply({ status: 200, body: items, origin });
 }
 
+/** 기간 경계로 받는 날짜. 시각·타임존은 받지 않는다 — 화면이 고르는 단위가 '일'이다. */
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * `YYYY-MM-DD` → 그 날의 시작/끝 시각(**KST**). 형식이나 달력상 존재하지 않는 날이면 null.
+ *
+ * 경계를 KST 로 잡는 것이 핵심이다. UTC 로 자르면 한국 시간 오전 9시 이전의 활동이 전날로
+ * 밀려, 관리자가 고른 날짜와 화면의 숫자가 어긋난다.
+ */
+function dayBound(raw: string, edge: "start" | "end"): string | null {
+  if (!DAY_RE.test(raw)) return null;
+  const iso = edge === "start" ? `${raw}T00:00:00.000+09:00` : `${raw}T23:59:59.999+09:00`;
+  // 2026-02-31 처럼 형식은 맞지만 없는 날짜를 거른다. 그냥 넘기면 DB 가 500 으로 죽는다.
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
+}
+
+/**
+ * 추천/채택/넘김/무응답 집계 + 기간 내 가입자의 활동.
+ *
+ * `from`·`to` 는 생략할 수 있고, 생략하면 그쪽 방향으로 제한이 없다(= 전체 기간).
+ * 집계는 `admin_stats_range` RPC 가 한다 — 추천 행을 전부 가져와 애플리케이션에서 세면
+ * 지금은 괜찮지만 곧 못 버틴다.
+ */
 async function stats(ctx: AdminCtx): Promise<Response> {
   const denied = await requireManager(ctx);
   if (denied) return denied;
   const { db, origin } = ctx;
 
-  const [rowsRes, menusRes] = await Promise.all([
-    db.from("admin_menu_stats").select("*"),
-    db.from("menus").select("id, name"),
-  ]);
-  if (rowsRes.error) throw rowsRes.error;
-  if (menusRes.error) throw menusRes.error;
+  const params = new URL(ctx.req.url).searchParams;
+  const rawFrom = params.get("from");
+  const rawTo = params.get("to");
 
-  const nameById = new Map((menusRes.data ?? []).map((m) => [m.id, m.name]));
-  const perMenu = (rowsRes.data ?? []).map((s) => ({
-    menuId: s.menu_id,
-    name: nameById.get(s.menu_id) ?? null,
-    recommended: Number(s.recommended),
-    chosen: Number(s.chosen),
-    skipped: Number(s.skipped),
-    noResponse: Number(s.no_response),
-    lastRecommendedAt: s.last_recommended_at,
-  }));
+  const fields: string[] = [];
+  const from = rawFrom ? dayBound(rawFrom, "start") : null;
+  const to = rawTo ? dayBound(rawTo, "end") : null;
+  if (rawFrom && !from) fields.push("from");
+  if (rawTo && !to) fields.push("to");
+  // 뒤집힌 기간은 결과가 항상 0이라, 데이터가 없는 것인지 잘못 고른 것인지 구분되지 않는다.
+  if (from && to && from > to) fields.push("from", "to");
 
-  const total = perMenu.reduce(
-    (acc, m) => ({
-      recommended: acc.recommended + m.recommended,
-      chosen: acc.chosen + m.chosen,
-      skipped: acc.skipped + m.skipped,
-      noResponse: acc.noResponse + m.noResponse,
-    }),
-    { recommended: 0, chosen: 0, skipped: 0, noResponse: 0 },
-  );
+  if (fields.length > 0) {
+    return fail("VALIDATION_ERROR", "기간을 다시 확인해 주세요. (YYYY-MM-DD)", origin, {
+      fields: [...new Set(fields)],
+    });
+  }
 
-  return reply({
-    status: 200,
-    // 채택률은 무응답을 빼고 낸다. 넣으면 전부 5% 아래로 깔려 메뉴 간 비교가 안 된다.
-    body: { total, perMenu },
-    origin,
-  });
+  const { data, error } = await db.rpc("admin_stats_range", { p_from: from, p_to: to });
+  if (error) throw error;
+
+  return reply({ status: 200, body: data, origin });
 }
