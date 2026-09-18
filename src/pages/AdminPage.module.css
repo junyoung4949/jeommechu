@@ -195,9 +195,34 @@
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--raised);
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .photo img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+
+.photoSwap { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.photoPick {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink2);
+  padding: 6px 11px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.photoPick:hover { border-style: solid; }
+/* 파일 입력은 라벨이 대신 눌리므로 화면에서 치운다. */
+.photoPick input { display: none; }
+.photoUndo {
+  appearance: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 0;
+}
 
 .field { display: block; margin-bottom: 14px; }
 .field > span {

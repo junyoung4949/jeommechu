@@ -120,6 +120,12 @@ export interface MenuPatch {
   minPeople?: number
   maxPeople?: number
   description?: string | null
+  /**
+   * `uploadMenuImage()` 가 돌려준 주소만 받는다. 서버가 우리 버킷 주소인지 다시 보고,
+   * 아니면 `VALIDATION_ERROR` 로 막는다 — 초기 데이터처럼 외부 주소를 쓰는 메뉴는
+   * 사진을 새로 올리지 않는 한 이 필드를 보내면 안 된다.
+   */
+  imageUrl?: string
 }
 
 export async function patchMenu(id: number, patch: MenuPatch): Promise<void> {
