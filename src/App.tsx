@@ -5,13 +5,15 @@ import LoginModal from './components/LoginModal/LoginModal'
 import MainPage from './pages/MainPage'
 import MenuCreatePage from './pages/MenuCreatePage'
 import MenuDetailPage from './pages/MenuDetailPage'
+import MenuEditPage from './pages/MenuEditPage'
 import OAuthCallback from './pages/OAuthCallback'
 import AdminPage from './pages/AdminPage'
+import MyPage from './pages/MyPage'
 import { getMe, logout, type MeResponse } from './api/auth'
 import { hasSessionHint } from './api/client'
 
-/** /admin 에 들어왔지만 아직 볼 수 없을 때의 안내. 화면 하나짜리라 여기 둔다. */
-function AdminGate({ children, onLoginClick }: { children: ReactNode; onLoginClick?: () => void }) {
+/** 로그인·권한이 모자라 화면을 아직 보여줄 수 없을 때의 안내. 한 줄짜리라 여기 둔다. */
+function Gate({ children, onLoginClick }: { children: ReactNode; onLoginClick?: () => void }) {
   return (
     <main
       style={{
@@ -105,12 +107,7 @@ export default function App() {
   /** 헤더 + 로그인 모달을 공유하는 공통 레이아웃. */
   const shell = (page: ReactNode) => (
     <>
-      <Header
-        onLoginClick={() => setShowLogin(true)}
-        me={me}
-        onLogout={handleLogout}
-        onMeChange={setMe}
-      />
+      <Header onLoginClick={() => setShowLogin(true)} me={me} onLogout={handleLogout} />
       {page}
       {showLogin && (
         <LoginModal
@@ -157,6 +154,18 @@ export default function App() {
         {/* 공유 링크가 닿는 곳. /menus/new 보다 뒤에 두지만, react-router 는
             정적 세그먼트를 동적(:id)보다 먼저 매칭하므로 순서와 무관하게 안전하다. */}
         <Route path="/menus/:id" element={shell(<MenuDetailPage />)} />
+        <Route
+          path="/menus/:id/edit"
+          element={shell(
+            meLoading
+              ? <Gate>확인 중...</Gate>
+              : !me
+                ? <Gate onLoginClick={() => setShowLogin(true)}>
+                    메뉴를 고치려면 로그인해 주세요.
+                  </Gate>
+                : <MenuEditPage me={me} />,
+          )}
+        />
         {/*
           화면을 감추는 것은 편의일 뿐이다 — 주소를 직접 쳐서 들어와도 서버가 매 요청을
           401/403 으로 막는다. 여기서 막는 건 "쓸 수 없는 화면을 보여주지 않기" 위해서다.
@@ -165,14 +174,32 @@ export default function App() {
           path="/admin"
           element={shell(
             meLoading
-              ? <AdminGate>확인 중...</AdminGate>
+              ? <Gate>확인 중...</Gate>
               : !me
-                ? <AdminGate onLoginClick={() => setShowLogin(true)}>
+                ? <Gate onLoginClick={() => setShowLogin(true)}>
                     관리자 화면입니다. 로그인해 주세요.
-                  </AdminGate>
+                  </Gate>
                 : !me.isManager
-                  ? <AdminGate>관리자만 볼 수 있는 화면입니다.</AdminGate>
+                  ? <Gate>관리자만 볼 수 있는 화면입니다.</Gate>
                   : <AdminPage />,
+          )}
+        />
+        <Route
+          path="/me"
+          element={shell(
+            meLoading
+              ? <Gate>확인 중...</Gate>
+              : !me
+                ? <Gate onLoginClick={() => setShowLogin(true)}>
+                    로그인하면 내 정보와 등록한 메뉴를 볼 수 있어요.
+                  </Gate>
+                : <MyPage
+                    me={me}
+                    onMeChange={setMe}
+                    onLogout={handleLogout}
+                    // 탈퇴는 서버가 이미 세션을 폐기했다. 로그아웃을 또 부르지 않는다.
+                    onLeave={() => setMe(null)}
+                  />,
           )}
         />
         <Route

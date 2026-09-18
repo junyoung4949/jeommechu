@@ -78,13 +78,25 @@
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
 }
 
+/* 눌러도 마이페이지로 가므로 버튼이다. 생김새는 그대로 둔다. */
 .menuHead {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 8px 10px 12px;
+  border: 0;
   border-bottom: 1px solid #f2f2f2;
   margin-bottom: 6px;
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+}
+
+.menuHead:hover {
+  background: #f7f7f5;
 }
 
 .menuIdentity {
@@ -105,16 +117,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.menuError {
-  margin: 0 0 6px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #fff2f0;
-  color: #d4380d;
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 .menuItem {
@@ -143,10 +145,6 @@
 
 .menuItemDanger {
   color: #d4380d;
-}
-
-.fileInput {
-  display: none;
 }
 
 .loginBtn {

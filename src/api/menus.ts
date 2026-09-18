@@ -85,3 +85,103 @@ export async function createMenu(body: CreateMenuBody): Promise<MenuDetail> {
   const { data } = await client.post<MenuDetail>('/menus', body)
   return data
 }
+
+/** 보낸 필드만 바뀐다. 안 보낸 필드는 그대로 남는다. */
+export interface MenuPatch {
+  name?: string
+  categoryIds?: number[]
+  budgetTier?: BudgetTier
+  minPeople?: number
+  maxPeople?: number
+  description?: string | null
+  /**
+   * `uploadMenuImage()` 가 돌려준 주소만 받는다. 서버가 우리 버킷 주소인지 다시 보고,
+   * 아니면 `VALIDATION_ERROR` 로 막는다 — 초기 데이터처럼 외부 주소를 쓰는 메뉴는
+   * 사진을 새로 올리지 않는 한 이 필드를 보내면 안 된다.
+   */
+  imageUrl?: string
+}
+
+/** 관리자와 등록자 본인이 함께 쓴다. 누가 쓸 수 있는지는 서버가 판단한다. */
+export async function patchMenu(id: number, patch: MenuPatch): Promise<void> {
+  await client.patch(`/menus/${id}`, patch)
+}
+
+/**
+ * 추천 기록이 있으면 서버가 `CASCADE_NOT_CONFIRMED` 로 막는다.
+ * 몇 건이 함께 사라지는지 사용자에게 보여준 뒤 `confirmCascade` 로 다시 부른다.
+ */
+export async function deleteMenu(id: number, confirmCascade = false): Promise<void> {
+  await client.delete(`/menus/${id}`, { data: { confirmCascade } })
+}
+
+/**
+ * 메뉴 한 개의 성적. 서버가 관리자 화면에 쓰던 집계(`AdminMenu.stats`)와 같은 모양이다.
+ * 넷의 합이 아니라 `chosen + skipped + noResponse === recommended` 가 성립한다.
+ */
+export interface MenuStats {
+  recommended: number
+  chosen: number
+  skipped: number
+  /** 추천만 받고 아무 버튼도 안 누른 횟수. */
+  noResponse: number
+}
+
+/**
+ * 전체 메뉴 중 이 메뉴의 등수.
+ *
+ * `total` 은 전체 메뉴 수가 아니라 **집계 기준을 넘긴 메뉴 수**다. 응답이 한두 건뿐인
+ * 메뉴까지 분모에 넣으면 등수가 부풀려진다. 기준 미달이면 이 값 자체가 null 이다.
+ */
+export interface MenuRank {
+  position: number
+  total: number
+}
+
+export interface MyMenu {
+  id: number
+  name: string
+  imageUrl: string
+  categories: Category[]
+  budgetTier: BudgetTier
+  minPeople: number
+  maxPeople: number
+  description: string | null
+  createdAt: string
+  stats: MenuStats
+  /** 응답 수가 `minResponses` 에 못 미치면 null — 화면은 "집계 중"으로 표시한다. */
+  rank: MenuRank | null
+  lastRecommendedAt: string | null
+}
+
+export interface MyMenusResponse {
+  /**
+   * 순위가 매겨지는 최소 응답 수. 이 값을 서버가 쥐고 있어야 데이터가 쌓였을 때
+   * 클라이언트 배포 없이 기준을 올릴 수 있다.
+   */
+  minResponses: number
+  /** 전체 평균 채택률(0~1). 비교 기준선이 없으면 내 채택률이 높은지 낮은지 알 수 없다. */
+  avgChosenRate: number | null
+  menus: MyMenu[]
+}
+
+export async function fetchMyMenus(): Promise<MyMenusResponse> {
+  const { data } = await client.get<MyMenusResponse>('/auth/me/menus')
+  return data
+}
+
+/**
+ * 응답(채택+넘김) 중 채택 비율.
+ *
+ * 무응답을 분모에 넣지 않는다 — 실제로 무응답이 전체의 3/4 이라 넣으면 모든 메뉴가
+ * 10% 아래로 깔려 비교가 안 된다. 관리자 화면의 '응답 중 채택률'과 같은 정의다.
+ * 응답이 없으면 비교 대상이 아니므로 null.
+ */
+export function adoptionRate(stats: MenuStats): number | null {
+  const answered = stats.chosen + stats.skipped
+  return answered === 0 ? null : stats.chosen / answered
+}
+
+export function answeredCount(stats: MenuStats): number {
+  return stats.chosen + stats.skipped
+}

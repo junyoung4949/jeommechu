@@ -112,33 +112,11 @@ export async function fetchAdminStats(range: { from?: string; to?: string } = {}
   return data
 }
 
-/** 보낸 필드만 바뀐다. 안 보낸 필드는 그대로 남는다. */
-export interface MenuPatch {
-  name?: string
-  categoryIds?: number[]
-  budgetTier?: BudgetTier
-  minPeople?: number
-  maxPeople?: number
-  description?: string | null
-  /**
-   * `uploadMenuImage()` 가 돌려준 주소만 받는다. 서버가 우리 버킷 주소인지 다시 보고,
-   * 아니면 `VALIDATION_ERROR` 로 막는다 — 초기 데이터처럼 외부 주소를 쓰는 메뉴는
-   * 사진을 새로 올리지 않는 한 이 필드를 보내면 안 된다.
-   */
-  imageUrl?: string
-}
-
-export async function patchMenu(id: number, patch: MenuPatch): Promise<void> {
-  await client.patch(`/menus/${id}`, patch)
-}
-
 /**
- * 추천 기록이 있으면 서버가 `CASCADE_NOT_CONFIRMED` 로 막는다.
- * 몇 건이 함께 사라지는지 사용자에게 보여준 뒤 `confirmCascade` 로 다시 부른다.
+ * 메뉴 수정·삭제는 이제 관리자 전용이 아니다 — 등록자 본인도 자기 메뉴에 쓴다.
+ * 정의는 `api/menus.ts` 로 옮겼고, 여기서는 기존 import 를 깨지 않으려고 다시 내보낸다.
  */
-export async function deleteMenu(id: number, confirmCascade = false): Promise<void> {
-  await client.delete(`/menus/${id}`, { data: { confirmCascade } })
-}
+export { patchMenu, deleteMenu, type MenuPatch } from './menus'
 
 export async function addAlias(menuId: number, alias: string): Promise<void> {
   await client.post(`/menus/${menuId}/aliases`, { alias })
@@ -166,9 +144,5 @@ export async function deleteCategory(id: number, confirmCascade = false): Promis
   await client.delete(`/categories/${id}`, { data: { confirmCascade } })
 }
 
-/** 서버 오류 응답에서 코드와 문구를 꺼낸다. 형식은 명세 0-4 로 모든 라우트가 동일하다. */
-export function errorOf(err: unknown): { code?: string; message?: string; detail?: Record<string, unknown> } {
-  const res = (err as { response?: { data?: { code?: string; message?: string; detail?: Record<string, unknown> } } })
-    ?.response?.data
-  return res ?? {}
-}
+/** 마이페이지도 같은 형식을 읽으므로 `api/client.ts` 로 올렸다. 기존 import 를 위해 다시 내보낸다. */
+export { errorOf } from './client'

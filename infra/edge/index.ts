@@ -10,6 +10,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handleAdminRoute } from "./admin.ts";
+import { handleMeRoute } from "./me.ts";
 import {
   clearCookie,
   corsHeaders,
@@ -411,6 +412,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       imagePrefixes: menuImagePrefixes(),
     });
     if (handled) return handled;
+
+    // 마이페이지 라우트도 같은 방식으로 먼저 본다. `GET /auth/me` 는 아래 /auth 블록이
+    // 그대로 맡으므로 여기서는 null 이 와서 흘러간다.
+    const mine = await handleMeRoute({
+      req,
+      seg,
+      origin,
+      db: admin,
+      getViewer,
+      readJson,
+      viewerBody,
+      deleteOwnAvatar,
+      clearSessionCookies,
+      avatarBucket: AVATAR_BUCKET,
+    });
+    if (mine) return mine;
 
     // ---- GET /categories ------------------------------------------------
     if (seg[0] === "categories" && seg.length === 1) {

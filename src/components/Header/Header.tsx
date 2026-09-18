@@ -1,34 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Avatar from '../Avatar/Avatar'
-import {
-  AVATAR_MAX_BYTES,
-  AVATAR_MIME_TYPES,
-  deleteProfileImage,
-  uploadProfileImage,
-  type MeResponse,
-} from '../../api/auth'
+import type { MeResponse } from '../../api/auth'
 import styles from './Header.module.css'
 
 interface Props {
   onLoginClick: () => void
   me: MeResponse | null
   onLogout: () => void
-  /** 프로필 사진이 바뀌면 새 사용자 정보를 위로 올려보낸다. */
-  onMeChange: (me: MeResponse) => void
 }
 
-export default function Header({ onLoginClick, me, onLogout, onMeChange }: Props) {
+/**
+ * 드롭다운은 **입구**만 맡는다.
+ *
+ * 프로필 사진 등록·변경·삭제는 예전에 여기 있었지만 마이페이지로 옮겼다 —
+ * 같은 기능이 두 군데 있으면 둘 다 고쳐야 하고, 닉네임·탈퇴까지 얹을 자리도 없었다.
+ */
+export default function Header({ onLoginClick, me, onLogout }: Props) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const onCreatePage = pathname === '/menus/new'
   const onAdminPage = pathname === '/admin'
+  const onMyPage = pathname === '/me'
 
   const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   // 바깥 클릭·Esc 로 닫는다.
   useEffect(() => {
@@ -47,50 +43,9 @@ export default function Header({ onLoginClick, me, onLogout, onMeChange }: Props
     }
   }, [open])
 
-  // 메뉴를 닫으면 지난 에러 문구도 함께 치운다.
-  useEffect(() => {
-    if (!open) setError(null)
-  }, [open])
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    // 같은 파일을 다시 골라도 change 가 뜨도록 값을 비운다.
-    e.target.value = ''
-    if (!file) return
-
-    // 서버도 같은 검사를 하지만, 확실한 거절을 왕복 없이 바로 보여준다.
-    if (!AVATAR_MIME_TYPES.includes(file.type)) {
-      setError('jpg / png / webp 만 올릴 수 있어요.')
-      return
-    }
-    if (file.size > AVATAR_MAX_BYTES) {
-      setError('사진은 최대 2MB까지 올릴 수 있어요.')
-      return
-    }
-
-    setBusy(true)
-    setError(null)
-    try {
-      onMeChange(await uploadProfileImage(file))
-      setOpen(false)
-    } catch {
-      setError('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleRemove() {
-    setBusy(true)
-    setError(null)
-    try {
-      onMeChange(await deleteProfileImage())
-      setOpen(false)
-    } catch {
-      setError('사진을 지우지 못했어요. 잠시 후 다시 시도해 주세요.')
-    } finally {
-      setBusy(false)
-    }
+  function go(path: string) {
+    setOpen(false)
+    navigate(path)
   }
 
   return (
@@ -118,61 +73,35 @@ export default function Header({ onLoginClick, me, onLogout, onMeChange }: Props
 
             {open && (
               <div className={styles.menu} role="menu">
-                <div className={styles.menuHead}>
+                {/* 머리 부분을 눌러도 마이페이지로 간다 — 항목을 하나 더 늘리지 않으려고. */}
+                <button className={styles.menuHead} onClick={() => go('/me')} role="menuitem">
                   <Avatar nickname={me.nickname} imageUrl={me.profileImageUrl} size={48} />
-                  <div className={styles.menuIdentity}>
+                  <span className={styles.menuIdentity}>
                     <strong className={styles.menuNickname}>{me.nickname}</strong>
                     {me.email && <span className={styles.menuEmail}>{me.email}</span>}
-                  </div>
-                </div>
+                  </span>
+                </button>
 
-                {error && <p className={styles.menuError}>{error}</p>}
+                {!onMyPage && (
+                  <button className={styles.menuItem} onClick={() => go('/me')} role="menuitem">
+                    마이페이지
+                  </button>
+                )}
 
                 {/* 매니저에게만 보인다. 감추는 건 편의일 뿐 — 주소를 직접 쳐도 서버가 막는다. */}
                 {me.isManager && !onAdminPage && (
-                  <button
-                    className={styles.menuItem}
-                    onClick={() => { setOpen(false); navigate('/admin') }}
-                    role="menuitem"
-                  >
+                  <button className={styles.menuItem} onClick={() => go('/admin')} role="menuitem">
                     관리자
                   </button>
                 )}
 
                 <button
-                  className={styles.menuItem}
-                  onClick={() => fileRef.current?.click()}
-                  disabled={busy}
-                  role="menuitem"
-                >
-                  {me.profileImageUrl ? '사진 변경' : '사진 등록'}
-                </button>
-                {me.profileImageUrl && (
-                  <button
-                    className={styles.menuItem}
-                    onClick={handleRemove}
-                    disabled={busy}
-                    role="menuitem"
-                  >
-                    사진 삭제
-                  </button>
-                )}
-                <button
                   className={`${styles.menuItem} ${styles.menuItemDanger}`}
                   onClick={onLogout}
-                  disabled={busy}
                   role="menuitem"
                 >
                   로그아웃
                 </button>
-
-                <input
-                  ref={fileRef}
-                  className={styles.fileInput}
-                  type="file"
-                  accept={AVATAR_MIME_TYPES.join(',')}
-                  onChange={handleFile}
-                />
               </div>
             )}
           </div>
