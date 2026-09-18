@@ -20,7 +20,9 @@ import {
   type WeekdayRow,
 } from '../api/admin'
 import { fetchCategories, type Category } from '../api/categories'
+import { uploadMenuImage } from '../api/menus'
 import { BUDGET_BUCKETS, budgetLabel, type BudgetTier } from '../api/recommend'
+import { shrinkImageForUpload } from '../lib/resizeImage'
 import styles from './AdminPage.module.css'
 
 type Tab = 'menus' | 'stats' | 'categories'
@@ -57,6 +59,7 @@ interface Draft {
   minPeople: number
   maxPeople: number
   description: string
+  imageUrl: string
 }
 
 function draftOf(m: AdminMenu): Draft {
@@ -67,6 +70,7 @@ function draftOf(m: AdminMenu): Draft {
     minPeople: m.minPeople,
     maxPeople: m.maxPeople,
     description: m.description ?? '',
+    imageUrl: m.imageUrl,
   }
 }
 
@@ -92,6 +96,7 @@ export default function AdminPage() {
   const [editNotice, setEditNotice] = useState('')
   const [aliasInput, setAliasInput] = useState('')
   const [pendingDelete, setPendingDelete] = useState('')
+  const [photoBusy, setPhotoBusy] = useState(false)
 
   async function reload() {
     setLoading(true)
@@ -122,6 +127,7 @@ export default function AdminPage() {
     setEditNotice('')
     setAliasInput('')
     setPendingDelete('')
+    setPhotoBusy(false)
   }
 
   const creators = useMemo(() => {
@@ -188,6 +194,9 @@ export default function AdminPage() {
         minPeople: draft.minPeople,
         maxPeople: draft.maxPeople,
         description: draft.description.trim() === '' ? null : draft.description.trim(),
+        // 사진을 새로 올렸을 때만 보낸다. 초기 데이터 메뉴는 외부(Unsplash) 주소를 쓰는데,
+        // 그대로 되돌려 보내면 "우리 버킷 주소가 아니다"로 저장이 통째로 막힌다.
+        ...(draft.imageUrl !== selected.imageUrl && { imageUrl: draft.imageUrl }),
       })
       const fresh = await reload()
       if (fresh) {
@@ -199,6 +208,35 @@ export default function AdminPage() {
       setEditError(errorOf(err).message ?? '저장하지 못했어요.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * 고른 사진을 곧바로 버킷에 올리고, 메뉴에는 '저장'을 눌러야 붙는다.
+   * 올리기 전에 긴 변 1280px 로 줄인다 — 원본 그대로 두면 목록을 여는 모든 사람이
+   * 화면에 쓰이지도 않는 4MB 짜리를 내려받는다.
+   */
+  async function replacePhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = '' // 같은 파일 재선택도 인식되도록
+    if (!file) return
+
+    setEditError('')
+    setEditNotice('')
+    setPhotoBusy(true)
+    try {
+      const url = await uploadMenuImage(await shrinkImageForUpload(file))
+      setDraft((prev) => (prev ? { ...prev, imageUrl: url } : prev))
+      setEditNotice('사진을 올렸어요. 저장을 눌러야 메뉴에 반영됩니다.')
+    } catch (err) {
+      const e = errorOf(err)
+      setEditError(
+        e.code === 'FILE_TOO_LARGE'
+          ? '이미지는 최대 5MB까지 올릴 수 있어요.'
+          : e.message ?? '사진을 올리지 못했어요.',
+      )
+    } finally {
+      setPhotoBusy(false)
     }
   }
 
@@ -355,7 +393,26 @@ export default function AdminPage() {
                 <p className={styles.eyebrow}>메뉴 #{selected.id} 편집</p>
 
                 <div className={styles.photo}>
-                  <img src={selected.imageUrl} alt={selected.name} />
+                  <img src={draft.imageUrl} alt={selected.name} />
+                </div>
+                <div className={styles.photoSwap}>
+                  <label className={styles.photoPick}>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={replacePhoto}
+                      disabled={photoBusy}
+                    />
+                    {photoBusy ? '올리는 중...' : '사진 교체'}
+                  </label>
+                  {draft.imageUrl !== selected.imageUrl && (
+                    <button
+                      className={styles.photoUndo}
+                      onClick={() => setDraft({ ...draft, imageUrl: selected.imageUrl })}
+                    >
+                      원래 사진으로
+                    </button>
+                  )}
                 </div>
 
                 <label className={styles.field}>
@@ -476,7 +533,7 @@ export default function AdminPage() {
                   <button
                     className={styles.primary}
                     onClick={save}
-                    disabled={saving || draft.categoryIds.length === 0}
+                    disabled={saving || photoBusy || draft.categoryIds.length === 0}
                   >
                     {saving ? '저장 중...' : '저장'}
                   </button>

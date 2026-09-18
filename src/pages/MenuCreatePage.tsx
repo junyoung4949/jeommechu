@@ -9,6 +9,7 @@ import {
   type MenuDetail,
   type NameCheckResult,
 } from '../api/menus'
+import { shrinkImageForUpload } from '../lib/resizeImage'
 import styles from './MenuCreatePage.module.css'
 
 interface Props {
@@ -114,9 +115,12 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
     setError('')
     setUploading(true)
     try {
-      const url = await uploadMenuImage(file)
+      // 원본이 아니라 줄인 사진을 올린다. 미리보기도 올린 것과 같은 사진이어야
+      // 사용자가 보는 화질과 실제 등록되는 화질이 어긋나지 않는다.
+      const upload = await shrinkImageForUpload(file)
+      const url = await uploadMenuImage(upload)
       setImageUrl(url)
-      setImagePreview(URL.createObjectURL(file))
+      setImagePreview(URL.createObjectURL(upload))
       // 직전 제출에서 남은 사진 오류를 지운다. 안 지우면 방금 올렸는데도
       // 사진 오류 문구가 그대로 떠 있는다.
       setFieldErrors((prev) => prev.filter((f) => f !== 'imageUrl'))
@@ -447,7 +451,11 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
                     onChange={handleFile}
                     disabled={uploading}
                   />
-                  {uploading ? '업로드 중...' : '사진 선택 (jpg / png / webp, 5MB 이하)'}
+                  {/*
+                    올리기 전에 긴 변 1280px 로 줄이므로 큰 사진도 그냥 고르면 된다.
+                    5MB 상한은 그대로지만 줄인 뒤에 걸리는 일은 사실상 없어서 안내하지 않는다.
+                  */}
+                  {uploading ? '업로드 중...' : '사진 선택 (jpg / png / webp)'}
                 </label>
               )}
               {/*
