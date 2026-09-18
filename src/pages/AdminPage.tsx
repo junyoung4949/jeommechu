@@ -5,11 +5,19 @@ import {
   deleteMenu,
   errorOf,
   fetchAdminMenus,
+  fetchAdminStats,
   patchMenu,
   removeAlias,
   renameCategory,
   createCategory,
   type AdminMenu,
+  type AdminStats,
+  type CohortStats,
+  type DailyRow,
+  type HourRow,
+  type IdentityCounts,
+  type StatCounts,
+  type WeekdayRow,
 } from '../api/admin'
 import { fetchCategories, type Category } from '../api/categories'
 import { BUDGET_BUCKETS, budgetLabel, type BudgetTier } from '../api/recommend'
@@ -19,15 +27,16 @@ type Tab = 'menus' | 'stats' | 'categories'
 
 /**
  * 정렬 기준.
- * 채택률은 **무응답을 빼고** 낸다 — 넣으면 전부 5% 아래로 깔려 메뉴 간 비교가 안 된다.
+ * 여기 채택률은 **무응답을 빼고** 낸다 — 넣으면 전부 5% 아래로 깔려 메뉴 간 비교가 안 된다.
+ * 통계 탭의 '채택률'(분모가 추천 수)과는 값이 다르므로, 라벨에 분모를 적어 구분한다.
  */
 type Sort = 'recent' | 'recommended' | 'rateHigh' | 'rateLow' | 'name'
 
 const SORTS: { value: Sort; label: string }[] = [
   { value: 'recent', label: '최근 등록순' },
   { value: 'recommended', label: '추천 많은순' },
-  { value: 'rateLow', label: '채택률 낮은순' },
-  { value: 'rateHigh', label: '채택률 높은순' },
+  { value: 'rateLow', label: '응답 중 채택률 낮은순' },
+  { value: 'rateHigh', label: '응답 중 채택률 높은순' },
   { value: 'name', label: '이름순' },
 ]
 
@@ -498,7 +507,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {!loading && tab === 'stats' && <StatsTab menus={menus} />}
+      {!loading && tab === 'stats' && <StatsTab />}
       {!loading && tab === 'categories' && (
         <CategoriesTab categories={categories} menus={menus} onChanged={reload} />
       )}
@@ -508,66 +517,498 @@ export default function AdminPage() {
 
 /* ─────────────────────────── 통계 ─────────────────────────── */
 
-function StatsTab({ menus }: { menus: AdminMenu[] }) {
-  const total = menus.reduce(
-    (a, m) => ({
-      recommended: a.recommended + m.stats.recommended,
-      chosen: a.chosen + m.stats.chosen,
-      skipped: a.skipped + m.stats.skipped,
-      noResponse: a.noResponse + m.stats.noResponse,
-    }),
-    { recommended: 0, chosen: 0, skipped: 0, noResponse: 0 },
+/**
+ * 메뉴별 정렬 기준.
+ * 여기서의 세 비율은 **분모가 추천 수**다. 셋을 더하면 항상 100% 가 되므로 한 막대로 읽힌다.
+ * (메뉴 관리 탭의 '응답 중 채택률'은 분모가 달라 값이 서로 다르다.)
+ */
+type StatSort = 'recommended' | 'chosenHigh' | 'chosenLow' | 'skippedHigh' | 'noneHigh' | 'name'
+
+const STAT_SORTS: { value: StatSort; label: string }[] = [
+  { value: 'recommended', label: '추천 많은순' },
+  { value: 'chosenHigh', label: '채택률 높은순' },
+  { value: 'chosenLow', label: '채택률 낮은순' },
+  { value: 'skippedHigh', label: '넘김률 높은순' },
+  { value: 'noneHigh', label: '무응답률 높은순' },
+  { value: 'name', label: '이름순' },
+]
+
+/** 추천이 0인 메뉴는 비율이 존재하지 않는다. 0% 로 적으면 '아무도 안 고른 메뉴'와 섞인다. */
+function rate(n: number, recommended: number): number | null {
+  return recommended === 0 ? null : n / recommended
+}
+
+function pctText(r: number | null): string {
+  return r === null ? '—' : `${Math.round(r * 100)}%`
+}
+
+/** 비율이 없는 행(추천 0)은 정렬 방향과 무관하게 늘 뒤로 보낸다. */
+function byRate(a: number | null, b: number | null, desc: boolean): number {
+  if (a === null && b === null) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  return desc ? b - a : a - b
+}
+
+const KST = 'Asia/Seoul'
+
+/** 오늘(한국 날짜). 서버가 KST 로 경계를 자르므로 화면도 같은 기준으로 고른다. */
+function kstToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: KST }).format(new Date())
+}
+
+function shiftDay(day: string, delta: number): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + delta)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * 서버는 **기록이 있는 날만** 내려준다. 그대로 그리면 조용한 날이 사라져 그래프가
+ * 실제보다 촘촘해 보인다. 기간이 정해져 있으면 빈 날을 0으로 채워 실제 간격을 살린다.
+ */
+function fillDays(daily: DailyRow[], from: string, to: string): DailyRow[] {
+  const start = from || daily[0]?.day
+  const end = to || daily[daily.length - 1]?.day
+  if (!start || !end || start > end) return daily
+
+  const byDay = new Map(daily.map((d) => [d.day, d]))
+  const out: DailyRow[] = []
+  // 기간을 아주 넓게 잡으면 막대가 실 한 올이 된다. 그쯤이면 채워봐야 읽히지 않는다.
+  for (let day = start; day <= end && out.length < 400; day = shiftDay(day, 1)) {
+    out.push(
+      byDay.get(day) ??
+        { day, recommended: 0, chosen: 0, skipped: 0, noResponse: 0, loggedIn: 0, anonymous: 0, signups: 0 },
+    )
+  }
+  return out
+}
+
+/**
+ * 막대를 무엇으로 쪼갤지.
+ * 행동만으로 쪼개면 "이 숫자가 누구 것인가"가 안 보이고, 신원만으로 쪼개면 반응이 안 보인다.
+ * 두 벌을 따로 그리는 대신 같은 막대를 두 가지로 읽게 한다 — 높이(추천 수)는 그대로다.
+ */
+type Mode = 'action' | 'identity'
+
+/** 막대 한 칸의 재료. 두 기준 모두 이 한 행에서 나온다. */
+type Slice = StatCounts & IdentityCounts
+
+const LEGEND: Record<Mode, { label: string; cls: string; pick: (r: Slice) => number }[]> = {
+  action: [
+    { label: '채택', cls: styles.segChosen, pick: (r) => r.chosen },
+    { label: '넘김', cls: styles.segSkipped, pick: (r) => r.skipped },
+    { label: '무응답', cls: styles.segNone, pick: (r) => r.noResponse },
+  ],
+  identity: [
+    { label: '로그인', cls: styles.segMember, pick: (r) => r.loggedIn },
+    { label: '비로그인', cls: styles.segGuest, pick: (r) => r.anonymous },
+  ],
+}
+
+const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']
+
+/** 마우스를 올리면 기준과 무관하게 전부 보여준다. 기준을 바꿔가며 확인하지 않아도 되도록. */
+function tipOf(head: string, r: Slice, extra = ''): string {
+  return (
+    `${head} · 추천 ${r.recommended} (로그인 ${r.loggedIn} / 비로그인 ${r.anonymous})` +
+    ` · 채택 ${r.chosen} · 넘김 ${r.skipped} · 무응답 ${r.noResponse}${extra}`
   )
-  const answered = total.chosen + total.skipped
-  const pct = (n: number) => (answered === 0 ? '—' : `${Math.round((n / answered) * 100)}%`)
-  const rows = [...menus].sort((a, b) => b.stats.recommended - a.stats.recommended)
+}
+
+function peakOf<T extends Slice>(rows: T[], label: (r: T) => string): string {
+  if (rows.length === 0) return '—'
+  const top = rows.reduce((a, b) => (b.recommended > a.recommended ? b : a))
+  return top.recommended === 0 ? '—' : `${label(top)} · ${top.recommended}건`
+}
+
+interface BarDatum {
+  key: string
+  label: string
+  tip: string
+  row: Slice
+  /** 막대 위 점. 지금은 '그날 가입이 있었다'는 표시로만 쓴다. */
+  mark?: boolean
+}
+
+/**
+ * 세로 막대 묶음. 일별·시간대별·요일별이 모두 이걸 쓴다 —
+ * 축만 다르고 읽는 방법은 같아야 눈이 옮겨 다닐 수 있다.
+ */
+function Bars({ data, mode, labelStep = 1 }: { data: BarDatum[]; mode: Mode; labelStep?: number }) {
+  // 최댓값이 0이면(기록 없음) 0으로 나누게 된다.
+  const max = Math.max(...data.map((d) => d.row.recommended), 1)
+  return (
+    <>
+      <div className={styles.trend}>
+        {data.map((d) => (
+          <div key={d.key} className={styles.trendCol} title={d.tip}>
+            <span className={styles.trendDot} data-on={d.mark || undefined} />
+            <div className={styles.trendBar} style={{ height: `${(d.row.recommended / max) * 100}%` }}>
+              {LEGEND[mode].map((seg) => (
+                <span key={seg.label} className={seg.cls} style={{ flexGrow: seg.pick(d.row) }} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className={styles.trendDays}>
+        {data.map((d, i) => <span key={d.key}>{i % labelStep === 0 ? d.label : ''}</span>)}
+      </div>
+    </>
+  )
+}
+
+const PRESETS: { label: string; days: number | null }[] = [
+  { label: '최근 7일', days: 7 },
+  { label: '최근 30일', days: 30 },
+  { label: '전체', days: null },
+]
+
+function StatsTab() {
+  const today = kstToday()
+  const [from, setFrom] = useState(() => shiftDay(kstToday(), -29))
+  const [to, setTo] = useState(today)
+  const [data, setData] = useState<AdminStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [sort, setSort] = useState<StatSort>('recommended')
+  const [mode, setMode] = useState<Mode>('action')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    setError('')
+    fetchAdminStats({ from: from || undefined, to: to || undefined })
+      .then((d) => { if (alive) setData(d) })
+      .catch((err) => { if (alive) setError(errorOf(err).message ?? '통계를 불러오지 못했어요.') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [from, to])
+
+  function applyPreset(days: number | null) {
+    if (days === null) { setFrom(''); setTo('') } else { setFrom(shiftDay(today, -(days - 1))); setTo(today) }
+  }
+
+  const rows = useMemo(() => {
+    const list = [...(data?.perMenu ?? [])]
+    list.sort((a, b) => {
+      switch (sort) {
+        case 'name':
+          return (a.name ?? '').localeCompare(b.name ?? '', 'ko')
+        case 'chosenHigh':
+          return byRate(rate(a.chosen, a.recommended), rate(b.chosen, b.recommended), true)
+        case 'chosenLow':
+          return byRate(rate(a.chosen, a.recommended), rate(b.chosen, b.recommended), false)
+        case 'skippedHigh':
+          return byRate(rate(a.skipped, a.recommended), rate(b.skipped, b.recommended), true)
+        case 'noneHigh':
+          return byRate(rate(a.noResponse, a.recommended), rate(b.noResponse, b.recommended), true)
+        default:
+          return b.recommended - a.recommended
+      }
+    })
+    return list
+  }, [data, sort])
+
+  const activePreset = PRESETS.find((p) =>
+    p.days === null ? !from && !to : from === shiftDay(today, -(p.days - 1)) && to === today,
+  )
 
   return (
     <div className={styles.stats}>
-      <div className={styles.cards}>
-        <div className={styles.card}><span>추천 요청</span><strong>{total.recommended}</strong><em>누적</em></div>
-        <div className={styles.card}><span>채택</span><strong className={styles.good}>{total.chosen}</strong><em>응답 중 {pct(total.chosen)}</em></div>
-        <div className={styles.card}><span>넘김</span><strong className={styles.warnText}>{total.skipped}</strong><em>응답 중 {pct(total.skipped)}</em></div>
-        <div className={styles.card}><span>무응답</span><strong>{total.noResponse}</strong><em>추천만 받고 이탈</em></div>
+      <div className={styles.rangeBar}>
+        <div className={styles.presets}>
+          {PRESETS.map((p) => (
+            <button
+              key={p.label}
+              className={styles.preset}
+              aria-pressed={activePreset?.label === p.label}
+              onClick={() => applyPreset(p.days)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <label className={styles.dateField}>
+          <span>시작</span>
+          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <span className={styles.tilde}>~</span>
+        <label className={styles.dateField}>
+          <span>종료</span>
+          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <span className={styles.count}>
+          {from || to ? `${from || '처음'} ~ ${to || '오늘'}` : '전체 기간'}
+          {loading && ' · 불러오는 중...'}
+        </span>
       </div>
 
-      <div className={styles.panelBox}>
-        <header>
-          <h3>메뉴별 성적</h3>
-          <span>막대는 <b>응답 중 채택 비율</b> — 무응답은 빼고 계산합니다</span>
-        </header>
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr><th>메뉴</th><th>추천</th><th>채택</th><th>넘김</th><th>응답 중 채택</th></tr>
-            </thead>
-            <tbody>
-              {rows.map((m) => {
-                const r = adoptionRate(m)
-                const low = r !== null && r < 0.25
-                return (
-                  <tr key={m.id}>
-                    <td className={styles.name}>{m.name}</td>
-                    <td className={styles.num}>{m.stats.recommended}</td>
-                    <td className={`${styles.num} ${styles.good}`}>{m.stats.chosen}</td>
-                    <td className={`${styles.num} ${styles.warnText}`}>{m.stats.skipped}</td>
-                    <td>
-                      <div className={styles.barCell}>
-                        <div className={styles.track}>
-                          <div
-                            className={`${styles.fill} ${low ? styles.fillLow : ''}`}
-                            style={{ width: `${r === null ? 0 : r * 100}%` }}
-                          />
-                        </div>
-                        <span className={styles.pct}>{r === null ? '—' : `${Math.round(r * 100)}%`}</span>
-                      </div>
-                    </td>
+      {error && <p className={styles.error}>{error}</p>}
+      {!data ? (
+        !error && <p className={styles.muted}>불러오는 중...</p>
+      ) : (
+        <>
+          <Totals total={data.total} />
+
+          <div className={styles.chartBar}>
+            <div className={styles.presets}>
+              {([['action', '행동별'], ['identity', '신원별']] as [Mode, string][]).map(([v, label]) => (
+                <button
+                  key={v}
+                  className={styles.preset}
+                  aria-pressed={mode === v}
+                  onClick={() => setMode(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className={styles.chartHint}>아래 세 그래프의 막대를 쪼개는 기준 (높이는 추천 수로 동일)</span>
+            <div className={styles.legend}>
+              {LEGEND[mode].map((s) => (
+                <span key={s.label}><i className={s.cls} />{s.label}</span>
+              ))}
+            </div>
+          </div>
+
+          <Trend daily={fillDays(data.daily, from, to)} mode={mode} />
+
+          <div className={styles.rhythm}>
+            <Hourly rows={data.hourly} mode={mode} />
+            <Weekday rows={data.weekday} mode={mode} />
+          </div>
+
+          <Inflow users={data.users} />
+
+          <div className={styles.panelBox}>
+            <header>
+              <h3>메뉴별 성적</h3>
+              <span>세 비율의 분모는 <b>추천 수</b>입니다 — 더하면 100%</span>
+              <select
+                className={styles.inlineSelect}
+                value={sort}
+                onChange={(e) => setSort(e.target.value as StatSort)}
+                aria-label="메뉴 정렬"
+              >
+                {STAT_SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </header>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>메뉴</th><th>추천</th><th>채택률</th><th>넘김률</th><th>무응답률</th><th>구성</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {rows.map((m) => {
+                    const chosen = rate(m.chosen, m.recommended)
+                    return (
+                      <tr key={m.menuId}>
+                        <td className={styles.name}>{m.name ?? `#${m.menuId}`}</td>
+                        <td className={styles.num}>{m.recommended}</td>
+                        <RateCell value={chosen} count={m.chosen} tone={styles.good} />
+                        <RateCell value={rate(m.skipped, m.recommended)} count={m.skipped} tone={styles.warnText} />
+                        <RateCell value={rate(m.noResponse, m.recommended)} count={m.noResponse} tone={styles.sub} />
+                        <td><Stack row={m} /></td>
+                      </tr>
+                    )
+                  })}
+                  {rows.length === 0 && (
+                    <tr><td colSpan={6} className={styles.empty}>이 기간에는 추천 기록이 없어요.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function RateCell({ value, count, tone }: { value: number | null; count: number; tone: string }) {
+  return (
+    <td>
+      <div className={styles.rateCell}>
+        <b className={tone}>{pctText(value)}</b>
+        <span className={styles.sub}>{count}</span>
+      </div>
+    </td>
+  )
+}
+
+/** 채택·넘김·무응답을 한 줄에 쌓는다. 셋의 합이 추천 수라 비교가 눈으로 끝난다. */
+function Stack({ row }: { row: StatCounts }) {
+  if (row.recommended === 0) return <div className={styles.stack} />
+  return (
+    <div
+      className={styles.stack}
+      title={`채택 ${row.chosen} · 넘김 ${row.skipped} · 무응답 ${row.noResponse}`}
+    >
+      <span className={styles.segChosen} style={{ flexGrow: row.chosen }} />
+      <span className={styles.segSkipped} style={{ flexGrow: row.skipped }} />
+      <span className={styles.segNone} style={{ flexGrow: row.noResponse }} />
+    </div>
+  )
+}
+
+function Totals({ total }: { total: StatCounts & IdentityCounts }) {
+  const p = (n: number) => pctText(rate(n, total.recommended))
+  return (
+    <div className={styles.cards}>
+      <div className={styles.card}>
+        <span>추천 요청</span>
+        <strong>{total.recommended}</strong>
+        <em>로그인 {total.loggedIn} · 비로그인 {total.anonymous}</em>
+      </div>
+      <div className={styles.card}><span>채택</span><strong className={styles.good}>{total.chosen}</strong><em>채택률 {p(total.chosen)}</em></div>
+      <div className={styles.card}><span>넘김</span><strong className={styles.warnText}>{total.skipped}</strong><em>넘김률 {p(total.skipped)}</em></div>
+      <div className={styles.card}><span>무응답</span><strong>{total.noResponse}</strong><em>무응답률 {p(total.noResponse)}</em></div>
+    </div>
+  )
+}
+
+function Trend({ daily, mode }: { daily: DailyRow[]; mode: Mode }) {
+  if (daily.length === 0) return null
+  // 날짜 라벨이 겹치면 아무것도 못 읽는다. 열 개쯤만 남기고 건너뛴다.
+  const step = Math.ceil(daily.length / 10)
+
+  return (
+    <div className={styles.panelBox}>
+      <header>
+        <h3>일별 추이</h3>
+        <span>점은 그날의 가입 · 가장 많은 날 {peakOf(daily, (d) => d.day)}</span>
+      </header>
+      <Bars
+        mode={mode}
+        labelStep={step}
+        data={daily.map((d) => ({
+          key: d.day,
+          label: d.day.slice(5),
+          row: d,
+          mark: d.signups > 0,
+          tip: tipOf(d.day, d, d.signups > 0 ? ` · 가입 ${d.signups}` : ''),
+        }))}
+      />
+    </div>
+  )
+}
+
+/**
+ * 시간대별. 점심 메뉴를 고르는 서비스라 **가장 중요한 축**이다.
+ * 하루가 24칸으로 늘 고정이라, 기간을 바꿔도 같은 자리를 비교하게 된다.
+ */
+function Hourly({ rows, mode }: { rows: HourRow[]; mode: Mode }) {
+  return (
+    <div className={styles.panelBox}>
+      <header>
+        <h3>시간대별</h3>
+        <span>KST · 피크 {peakOf(rows, (r) => `${r.hour}시`)}</span>
+      </header>
+      <Bars
+        mode={mode}
+        labelStep={3}
+        data={rows.map((r) => ({
+          key: String(r.hour),
+          label: String(r.hour),
+          row: r,
+          tip: tipOf(`${r.hour}시대`, r),
+        }))}
+      />
+    </div>
+  )
+}
+
+function Weekday({ rows, mode }: { rows: WeekdayRow[]; mode: Mode }) {
+  return (
+    <div className={styles.panelBox}>
+      <header>
+        <h3>요일별</h3>
+        <span>피크 {peakOf(rows, (r) => `${WEEKDAYS[r.dow - 1]}요일`)}</span>
+      </header>
+      <Bars
+        mode={mode}
+        data={rows.map((r) => ({
+          key: String(r.dow),
+          label: WEEKDAYS[r.dow - 1],
+          row: r,
+          tip: tipOf(`${WEEKDAYS[r.dow - 1]}요일`, r),
+        }))}
+      />
+    </div>
+  )
+}
+
+/**
+ * 기간 내 가입자와 그들의 활동.
+ * 활동은 **가입 이후** 기록만 센다 — 로그인 시 비로그인 이력이 계정으로 넘어오기 때문에,
+ * 그냥 세면 가입 전에 하던 활동까지 신규 회원의 성적으로 잡혀 활성도가 부풀려진다.
+ */
+function Inflow({ users }: { users: CohortStats }) {
+  const share = users.totalUsers === 0 ? null : users.signups / users.totalUsers
+  const ratio = (n: number) => (users.signups === 0 ? '—' : `${Math.round((n / users.signups) * 100)}%`)
+  const perUser = users.signups === 0 ? '—' : (users.recommended / users.signups).toFixed(1)
+  const answered = users.chosen + users.skipped
+
+  return (
+    <div className={styles.panelBox}>
+      <header>
+        <h3>유입과 활동</h3>
+        <span>이 기간에 가입한 사람들의 <b>가입 이후</b> 활동만 셉니다</span>
+      </header>
+
+      <div className={styles.innerCards}>
+        <div className={styles.card}>
+          <span>신규 가입</span>
+          <strong>{users.signups}</strong>
+          <em>전체 {users.totalUsers}명 중 {pctText(share)}</em>
         </div>
+        <div className={styles.card}>
+          <span>활동 시작</span>
+          <strong className={styles.good}>{users.activated}</strong>
+          <em>신규 중 {ratio(users.activated)}</em>
+        </div>
+        <div className={styles.card}>
+          <span>재방문</span>
+          <strong>{users.returning}</strong>
+          <em>이틀 이상 활동 · 평균 {users.avgActiveDays}일</em>
+        </div>
+        <div className={styles.card}>
+          <span>1인당 추천</span>
+          <strong>{perUser}</strong>
+          <em>응답률 {pctText(rate(answered, users.recommended))}</em>
+        </div>
+      </div>
+
+      <div className={styles.tableWrap}>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>가입자</th><th>가입일</th><th>추천</th><th>채택</th><th>넘김</th>
+              <th>무응답</th><th>활동일</th><th>마지막 활동</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.rows.map((u) => (
+              <tr key={u.userNo}>
+                <td className={styles.name}>{u.nickname}</td>
+                <td className={styles.sub}>{formatDay(u.joinedAt)}</td>
+                <td className={styles.num}>{u.recommended}</td>
+                <td className={`${styles.num} ${styles.good}`}>{u.chosen}</td>
+                <td className={`${styles.num} ${styles.warnText}`}>{u.skipped}</td>
+                <td className={styles.num}>{u.noResponse}</td>
+                <td className={styles.num}>{u.activeDays}</td>
+                <td className={styles.sub}>{u.lastActiveAt ? formatDay(u.lastActiveAt) : '없음'}</td>
+              </tr>
+            ))}
+            {users.rows.length === 0 && (
+              <tr><td colSpan={8} className={styles.empty}>이 기간에 가입한 사람이 없어요.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )

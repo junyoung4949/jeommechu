@@ -34,7 +34,8 @@ function allowedOrigins(): string[] {
 
 export function corsHeaders(origin: string | null): Record<string, string> {
   const base: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    // PATCH 가 빠지면 /menus/{id} 수정이 프리플라이트에서 막힌다. 실제로 한 번 그랬다.
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, content-type, x-client-info, apikey",
     "Vary": "Origin",
   };
