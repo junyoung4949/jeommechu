@@ -1,4 +1,7 @@
-// 관리자 전용 라우트.
+// 관리자 라우트, 그리고 메뉴 수정·삭제.
+//
+// 메뉴 수정·삭제만 예외로 **등록자 본인에게도 열려 있다** (`requireOwner`). 라우팅이
+// 여기 있어서 함께 두었을 뿐, 나머지 라우트는 전부 매니저 전용이다.
 //
 // ## 왜 RLS 가 아니라 여기서 검사하는가
 //
@@ -48,6 +51,24 @@ async function requireManager(ctx: AdminCtx): Promise<Response | null> {
     return fail("FORBIDDEN", "관리자만 할 수 있는 작업입니다.", ctx.origin);
   }
   return null;
+}
+
+/**
+ * 메뉴 수정·삭제의 문지기. **매니저이거나 그 메뉴를 등록한 본인**이면 통과한다.
+ *
+ * 자기가 올린 메뉴를 고치는 데 관리자를 거치게 할 이유가 없다. 다만 등록자가 탈퇴하면
+ * `created_by` 가 null 이 되는데(ON DELETE SET NULL), 그런 메뉴는 주인이 없는 것이므로
+ * 아무나 통과시키지 않고 매니저에게만 남긴다.
+ */
+function requireOwner(
+  ctx: AdminCtx,
+  viewer: AdminViewer,
+  createdBy: string | null,
+  verb: string,
+): Response | null {
+  if (viewer.isManager) return null;
+  if (createdBy && createdBy === viewer.authUserId) return null;
+  return fail("FORBIDDEN", `내가 등록한 메뉴만 ${verb} 수 있습니다.`, ctx.origin);
 }
 
 /** 경로의 숫자 세그먼트. 아니면 null. */
@@ -116,16 +137,20 @@ export async function handleAdminRoute(ctx: AdminCtx): Promise<Response | null> 
 /* ────────────────────────────── 메뉴 ────────────────────────────── */
 
 async function patchMenu(ctx: AdminCtx, menuId: number): Promise<Response> {
-  const denied = await requireManager(ctx);
-  if (denied) return denied;
   const { db, origin } = ctx;
+  // 로그인 여부를 먼저 본다. 소유자 검사는 메뉴를 읽어봐야 할 수 있기 때문이다.
+  const viewer = await ctx.getViewer();
+  if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
 
   const { data: current } = await db
     .from("menus")
-    .select("id, name, budget_tier, min_people, max_people, canonical_name")
+    .select("id, name, budget_tier, min_people, max_people, canonical_name, created_by")
     .eq("id", menuId)
     .maybeSingle();
   if (!current) return fail("NOT_FOUND", "존재하지 않는 메뉴입니다.", origin, { menuId });
+
+  const denied = requireOwner(ctx, viewer, current.created_by, "고칠");
+  if (denied) return denied;
 
   const body = (await ctx.readJson(ctx.req)) ?? {};
   const patch: Record<string, unknown> = {};
@@ -217,16 +242,19 @@ async function patchMenu(ctx: AdminCtx, menuId: number): Promise<Response> {
 }
 
 async function deleteMenu(ctx: AdminCtx, menuId: number): Promise<Response> {
-  const denied = await requireManager(ctx);
-  if (denied) return denied;
   const { db, origin } = ctx;
+  const viewer = await ctx.getViewer();
+  if (!viewer) return fail("UNAUTHORIZED", "인증이 필요합니다.", origin);
 
   const { data: menu } = await db
     .from("menus")
-    .select("id, name, canonical_name")
+    .select("id, name, canonical_name, created_by")
     .eq("id", menuId)
     .maybeSingle();
   if (!menu) return fail("NOT_FOUND", "존재하지 않는 메뉴입니다.", origin, { menuId });
+
+  const denied = requireOwner(ctx, viewer, menu.created_by, "지울");
+  if (denied) return denied;
 
   // recommendations 는 ON DELETE CASCADE 다. 메뉴를 지우면 그 메뉴의 추천 기록이 **함께
   // 사라지고 과거 통계가 소급해서 바뀐다.** 되돌릴 수 없으므로 한 번 확인받는다.

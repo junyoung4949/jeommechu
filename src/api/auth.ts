@@ -85,3 +85,26 @@ export async function deleteProfileImage(): Promise<MeResponse> {
   const { data } = await client.delete<MeResponse>('/auth/me/image')
   return data
 }
+
+/** 닉네임 길이. 서버와 같은 값이며, 형식 오류는 왕복 없이 앞단에서 거른다. */
+export const NICKNAME_MIN = 2
+export const NICKNAME_MAX = 12
+
+/**
+ * 이미 쓰는 닉네임이면 서버가 409(`NICKNAME_TAKEN`)로 막는다.
+ * 중복은 미리 확인하지 않는다 — 확인과 저장 사이에 남이 채갈 수 있어 어차피 409 를 다뤄야 한다.
+ */
+export async function updateNickname(nickname: string): Promise<MeResponse> {
+  const { data } = await client.patch<MeResponse>('/auth/me', { nickname })
+  return data
+}
+
+/**
+ * 탈퇴. 서버가 계정과 우리 버킷의 프로필 사진을 지우고 세션을 폐기한다.
+ *
+ * 등록한 메뉴는 남는다 — `menus.created_by` 가 `ON DELETE SET NULL` 이라 등록자 표시만
+ * 끊기고 메뉴 자체와 추천 기록은 그대로다 (`MenuCreator` 주석 참고).
+ */
+export async function deleteAccount(): Promise<void> {
+  await client.delete('/auth/me')
+}

@@ -81,4 +81,17 @@ client.interceptors.response.use(
   },
 )
 
+/**
+ * 서버 오류 응답에서 코드와 문구를 꺼낸다. 형식은 명세 0-4 로 모든 라우트가 동일하다.
+ *
+ * 관리자 화면만 쓰던 것을 여기로 올렸다 — 마이페이지도 같은 형식을 읽어야 하는데,
+ * `api/admin.ts` 에 두면 마이페이지가 관리자 모듈을 import 하게 되고
+ * (admin → menus → admin) 순환이 생긴다.
+ */
+export function errorOf(err: unknown): { code?: string; message?: string; detail?: Record<string, unknown> } {
+  const res = (err as { response?: { data?: { code?: string; message?: string; detail?: Record<string, unknown> } } })
+    ?.response?.data
+  return res ?? {}
+}
+
 export default client

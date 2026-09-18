@@ -1,23 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchCategories, type Category } from '../api/categories'
-import { BUDGET_BUCKETS, type BudgetTier } from '../api/recommend'
-import {
-  checkMenuName,
-  createMenu,
-  uploadMenuImage,
-  type MenuDetail,
-  type NameCheckResult,
-} from '../api/menus'
-import { shrinkImageForUpload } from '../lib/resizeImage'
-import styles from './MenuCreatePage.module.css'
+import { BUDGET_BUCKETS } from '../api/recommend'
+import { checkMenuName, createMenu, type MenuDetail, type NameCheckResult } from '../api/menus'
+import MenuFields, { type MenuFormValue } from '../components/MenuFields/MenuFields'
+import styles from '../styles/menuForm.module.css'
 
 interface Props {
   isLoggedIn: boolean
   onLoginClick: () => void
 }
-
-const PEOPLE_RANGE = [1, 2, 3, 4, 5, 6, 7, 8]
 
 interface ApiError {
   status?: number
@@ -40,6 +32,16 @@ function readApiError(err: unknown): ApiError {
 
 type Step = 'name' | 'detail' | 'done'
 
+const EMPTY_FORM: MenuFormValue = {
+  categoryIds: [],
+  budgetTier: null,
+  minPeople: 1,
+  maxPeople: 4,
+  description: '',
+  imageUrl: null,
+  imagePreview: null,
+}
+
 export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
   const navigate = useNavigate()
 
@@ -50,13 +52,7 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
   const [confirmedDistinct, setConfirmedDistinct] = useState(false)
 
   const [categories, setCategories] = useState<Category[]>([])
-  const [categoryIds, setCategoryIds] = useState<number[]>([])
-  const [budgetTier, setBudgetTier] = useState<BudgetTier | null>(null)
-  const [minPeople, setMinPeople] = useState(1)
-  const [maxPeople, setMaxPeople] = useState(4)
-  const [description, setDescription] = useState('')
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [form, setForm] = useState<MenuFormValue>(EMPTY_FORM)
   const [uploading, setUploading] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
@@ -68,18 +64,18 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
     fetchCategories().then(setCategories).catch(() => setCategories([]))
   }, [])
 
+  /** 고친 필드의 오류 문구는 함께 지운다. 안 지우면 방금 고쳤는데도 빨간 글씨가 남는다. */
+  function patchForm(patch: Partial<MenuFormValue>) {
+    setForm((prev) => ({ ...prev, ...patch }))
+    setFieldErrors((prev) => prev.filter((field) => !(field in patch)))
+  }
+
   function resetAll() {
     setStep('name')
     setName('')
     setCheck(null)
     setConfirmedDistinct(false)
-    setCategoryIds([])
-    setBudgetTier(null)
-    setMinPeople(1)
-    setMaxPeople(4)
-    setDescription('')
-    setImageUrl(null)
-    setImagePreview(null)
+    setForm(EMPTY_FORM)
     setError('')
     setFieldErrors([])
     setCreated(null)
@@ -107,46 +103,17 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
     }
   }
 
-  async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    event.target.value = '' // 같은 파일 재선택도 인식되도록
-    if (!file) return
-
-    setError('')
-    setUploading(true)
-    try {
-      // 원본이 아니라 줄인 사진을 올린다. 미리보기도 올린 것과 같은 사진이어야
-      // 사용자가 보는 화질과 실제 등록되는 화질이 어긋나지 않는다.
-      const upload = await shrinkImageForUpload(file)
-      const url = await uploadMenuImage(upload)
-      setImageUrl(url)
-      setImagePreview(URL.createObjectURL(upload))
-      // 직전 제출에서 남은 사진 오류를 지운다. 안 지우면 방금 올렸는데도
-      // 사진 오류 문구가 그대로 떠 있는다.
-      setFieldErrors((prev) => prev.filter((f) => f !== 'imageUrl'))
-    } catch (err) {
-      const { code, message } = readApiError(err)
-      setError(
-        code === 'FILE_TOO_LARGE'
-          ? '이미지는 최대 5MB까지 올릴 수 있어요.'
-          : message ?? '이미지 업로드에 실패했어요.',
-      )
-    } finally {
-      setUploading(false)
-    }
-  }
-
   async function handleSubmit() {
     const invalid: string[] = []
-    if (categoryIds.length === 0) invalid.push('categoryIds')
-    if (!budgetTier) invalid.push('budgetTier')
-    if (maxPeople < minPeople) invalid.push('maxPeople')
-    if (description.length > 50) invalid.push('description')
-    if (!imageUrl) invalid.push('imageUrl')
+    if (form.categoryIds.length === 0) invalid.push('categoryIds')
+    if (!form.budgetTier) invalid.push('budgetTier')
+    if (form.maxPeople < form.minPeople) invalid.push('maxPeople')
+    if (form.description.length > 50) invalid.push('description')
+    if (!form.imageUrl) invalid.push('imageUrl')
 
     // budgetTier / imageUrl 을 따로 좁히는 이유: invalid 배열만 보면 타입이 안 좁혀져
     // 아래에서 non-null 단언(!)을 써야 한다. 검사와 사용을 한 조건에 묶어 단언을 없앤다.
-    if (invalid.length > 0 || !budgetTier || !imageUrl) {
+    if (invalid.length > 0 || !form.budgetTier || !form.imageUrl) {
       setFieldErrors(invalid)
       setError('필수 항목을 확인해 주세요.')
       return
@@ -158,12 +125,12 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
     try {
       const menu = await createMenu({
         name: name.trim(),
-        categoryIds,
-        budgetTier,
-        minPeople,
-        maxPeople,
-        imageUrl,
-        description: description.trim() || null,
+        categoryIds: form.categoryIds,
+        budgetTier: form.budgetTier,
+        minPeople: form.minPeople,
+        maxPeople: form.maxPeople,
+        imageUrl: form.imageUrl,
+        description: form.description.trim() || null,
         confirmedDistinct,
       })
       setCreated(menu)
@@ -203,14 +170,6 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
       setSubmitting(false)
     }
   }
-
-  function toggleCategory(id: number) {
-    setCategoryIds((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
-    )
-  }
-
-  const invalid = (field: string) => fieldErrors.includes(field)
 
   // ---- 비로그인 -------------------------------------------------------
   if (!isLoggedIn) {
@@ -353,150 +312,15 @@ export default function MenuCreatePage({ isLoggedIn, onLoginClick }: Props) {
               </p>
             )}
 
-            <section className={styles.section}>
-              <label className={styles.label}>
-                카테고리 <span className={styles.req}>필수</span>
-              </label>
-              <div className={styles.chips}>
-                {categories.map(({ id, name: catName }) => (
-                  <button
-                    key={id}
-                    className={`${styles.chip} ${categoryIds.includes(id) ? styles.active : ''}`}
-                    onClick={() => toggleCategory(id)}
-                  >
-                    {catName}
-                  </button>
-                ))}
-              </div>
-              {invalid('categoryIds') && (
-                <p className={styles.fieldError}>카테고리를 1개 이상 선택해 주세요.</p>
-              )}
-            </section>
-
-            <section className={styles.section}>
-              <label className={styles.label}>
-                가격대 <span className={styles.req}>필수</span>
-              </label>
-              <p className={styles.hint}>이 메뉴의 1인분 가격이 속한 구간을 골라 주세요.</p>
-              <div className={styles.chips}>
-                {BUDGET_BUCKETS.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    className={`${styles.chip} ${budgetTier === value ? styles.active : ''}`}
-                    onClick={() => setBudgetTier(budgetTier === value ? null : value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {invalid('budgetTier') && (
-                <p className={styles.fieldError}>가격대를 선택해 주세요.</p>
-              )}
-            </section>
-
-            <section className={styles.section}>
-              <label className={styles.label}>
-                적합 인원 <span className={styles.req}>필수</span>
-              </label>
-              <p className={styles.hint}>몇 명이서 먹기 좋은 메뉴인가요?</p>
-              <div className={styles.peopleRow}>
-                <select
-                  className={styles.select}
-                  value={minPeople}
-                  onChange={(e) => setMinPeople(Number(e.target.value))}
-                >
-                  {PEOPLE_RANGE.map((n) => (
-                    <option key={n} value={n}>{n}명</option>
-                  ))}
-                </select>
-                <span className={styles.tilde}>~</span>
-                <select
-                  className={styles.select}
-                  value={maxPeople}
-                  onChange={(e) => setMaxPeople(Number(e.target.value))}
-                >
-                  {PEOPLE_RANGE.map((n) => (
-                    <option key={n} value={n}>{n}명</option>
-                  ))}
-                </select>
-              </div>
-              {invalid('maxPeople') && (
-                <p className={styles.fieldError}>최대 인원은 최소 인원보다 크거나 같아야 해요.</p>
-              )}
-            </section>
-
-            <section className={styles.section}>
-              <label className={styles.label}>
-                사진 <span className={styles.req}>필수</span>
-              </label>
-              {imagePreview ? (
-                <div className={styles.imageBox}>
-                  <img src={imagePreview} alt="미리보기" className={styles.imagePreview} />
-                  <button
-                    className={styles.linkBtn}
-                    onClick={() => {
-                      setImageUrl(null)
-                      setImagePreview(null)
-                    }}
-                  >
-                    사진 제거
-                  </button>
-                </div>
-              ) : (
-                <label className={styles.fileLabel}>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className={styles.fileInput}
-                    onChange={handleFile}
-                    disabled={uploading}
-                  />
-                  {/*
-                    올리기 전에 긴 변 1280px 로 줄이므로 큰 사진도 그냥 고르면 된다.
-                    5MB 상한은 그대로지만 줄인 뒤에 걸리는 일은 사실상 없어서 안내하지 않는다.
-                  */}
-                  {uploading ? '업로드 중...' : '사진 선택 (jpg / png / webp)'}
-                </label>
-              )}
-              {/*
-                등록된 사진은 모든 사용자에게 공개된다. 웹에서 가져온 사진을 올리면
-                저작권 문제가 되므로, 업로드 직전에 한 번 짚어 준다.
-              */}
-              <p className={styles.fieldHint}>
-                직접 찍은 사진만 올려주세요. 웹에서 가져온 사진은 저작권 문제가 될 수 있어요.
-              </p>
-              {/*
-                imageUrl 은 null 이거나 POST /images 가 돌려준 주소뿐이다(설정 지점이 그 둘뿐).
-                즉 서버의 "우리 버킷 주소인가" 검사는 UI 경로로는 걸릴 수 없고, API 를 직접
-                호출하는 경우에만 걸린다. 그래서 여기서는 "사진 없음"만 안내한다.
-                혹시 서버가 그래도 거절하면 아래 문구가 나오는데, 사용자에게 "주소"를 말해봐야
-                의미가 없으므로 할 수 있는 행동(다시 올리기)만 알려준다.
-              */}
-              {invalid('imageUrl') && (
-                <p className={styles.fieldError}>
-                  {imageUrl
-                    ? '사진을 등록하지 못했어요. 다시 올려주세요.'
-                    : '메뉴 사진을 등록해 주세요.'}
-                </p>
-              )}
-            </section>
-
-            <section className={styles.section}>
-              <label className={styles.label}>
-                한 줄 설명 <span className={styles.opt}>선택</span>
-              </label>
-              <input
-                className={styles.input}
-                value={description}
-                maxLength={50}
-                placeholder="예) 얼큰하고 든든해요"
-                onChange={(e) => setDescription(e.target.value)}
-              />
-              <p className={styles.counter}>{description.length} / 50</p>
-              {invalid('description') && (
-                <p className={styles.fieldError}>설명은 50자 이하로 입력해 주세요.</p>
-              )}
-            </section>
+            <MenuFields
+              categories={categories}
+              value={form}
+              onChange={patchForm}
+              fieldErrors={fieldErrors}
+              uploading={uploading}
+              onUploadingChange={setUploading}
+              onError={setError}
+            />
 
             {error && <p className={styles.error}>{error}</p>}
 

@@ -13,7 +13,8 @@
 | 파일 | 역할 |
 |---|---|
 | `index.ts` | 라우터 + 공개 엔드포인트 |
-| `admin.ts` | 관리자 전용 엔드포인트 |
+| `admin.ts` | 관리자 엔드포인트 + 메뉴 수정·삭제 |
+| `me.ts` | 마이페이지 — 내 계정과 내가 등록한 메뉴 |
 | `http.ts` | 응답·쿠키·CORS·에러코드 헬퍼 |
 
 ## 관리자 엔드포인트
@@ -28,7 +29,55 @@
 | `DELETE` | `/menus/{id}/aliases/{alias}` | 이형어 해제 |
 | `POST` `PATCH` `DELETE` | `/categories[/{id}]` | 카테고리 추가·이름변경·삭제 |
 
-전부 `requireManager()` 를 통과해야 합니다 — 비로그인 `401`, 매니저 아님 `403`.
+카테고리·이형어·`/admin/*` 는 `requireManager()` 를 통과해야 합니다 — 비로그인 `401`,
+매니저 아님 `403`. **`PATCH`·`DELETE /menus/{id}` 만 예외로 등록자 본인에게도 열려 있습니다**
+(`requireOwner()`). 자기가 올린 메뉴를 고치는 데 관리자를 거칠 이유가 없기 때문입니다.
+등록자가 탈퇴해 `created_by` 가 `null` 이 된 메뉴는 주인이 없으므로 매니저만 건드릴 수 있습니다.
+
+## 마이페이지 엔드포인트 (`me.ts`)
+
+| 메서드 | 경로 | 하는 일 |
+|---|---|---|
+| `GET` | `/auth/me/menus` | 내가 등록한 메뉴 + 성적 + 순위 |
+| `PATCH` | `/auth/me` | 닉네임 변경 (2~12자, 중복은 `NICKNAME_TAKEN` 409) |
+| `DELETE` | `/auth/me` | 탈퇴 |
+
+### `GET /auth/me/menus`
+
+```json
+{ "minResponses": 5,
+  "avgChosenRate": 0.2206,
+  "menus": [ { "id": 12, "name": "김밥", "imageUrl": "...", "categories": [...],
+               "budgetTier": "UNDER_5000", "minPeople": 1, "maxPeople": 2,
+               "description": null, "createdAt": "...",
+               "stats": { "recommended": 43, "chosen": 4, "skipped": 5, "noResponse": 34 },
+               "rank": { "position": 1, "total": 6 },
+               "lastRecommendedAt": "..." } ] }
+```
+
+**순위는 추천 수가 아니라 응답 수로 자릅니다.** 추천을 10번 받았어도 아무도 버튼을 안
+눌렀다면 그 메뉴에 대해 아는 게 없습니다 — 실제로 추천 10회에 응답 2회인 메뉴가 있습니다.
+`minResponses`(현재 5) 미만이면 `rank` 가 `null` 이고 화면은 "집계 중"으로 표시합니다.
+분모도 기준을 넘긴 메뉴만 셉니다(`total`). 기록이 쌓이면 이 상수만 올리면 되고,
+클라이언트는 응답에 실려 오는 값을 그대로 쓰므로 함께 배포할 필요가 없습니다.
+
+채택률은 `chosen / (chosen + skipped)` 입니다. 무응답이 전체 기록의 3/4 라 분모에 넣으면
+모든 메뉴가 10% 아래로 깔려 순서가 잡히지 않습니다(관리자 화면의 '응답 중 채택률'과 같은 정의).
+동점은 같은 등수로 묶습니다.
+
+### ⚠️ 탈퇴하면 그 사람의 추천 기록도 사라집니다
+
+```
+recommendations_user_id_fkey  FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+menus_created_by_fkey         FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL
+```
+
+등록한 **메뉴는 남고** 등록자 표시만 끊깁니다. 하지만 그 사람이 **받았던 추천 기록은
+함께 지워지므로** 메뉴들의 성적이 소급해서 줄어듭니다. 되돌릴 수 없어 화면에서 닉네임을
+다시 입력받아 확인한 뒤 호출합니다.
+
+> 기록을 익명으로 남기려면 `recommendations.user_id` 를 `ON DELETE SET NULL` 로 바꿔야
+> 합니다. 그러면 비로그인 기록(`user_id is null`)과 구분되지 않는 점을 함께 고려해야 합니다.
 
 ### `GET /admin/stats?from=&to=`
 

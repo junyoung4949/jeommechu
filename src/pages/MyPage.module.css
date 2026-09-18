@@ -1,0 +1,565 @@
+/*
+ * 앱의 색을 그대로 따른다 (src/index.css: 배경 #fafaf8, 텍스트 #222, 주버튼 #252525).
+ * 채택·넘김 색은 관리자 화면(AdminPage.module.css 의 --good/--warn)과 같은 값이다 —
+ * 같은 뜻을 두 화면에서 다른 색으로 칠하면 읽는 사람이 매번 범례를 다시 봐야 한다.
+ */
+.main {
+  min-height: 100vh;
+  padding: 88px 20px 48px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: #fafaf8;
+}
+
+.content {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: #fff;
+  border: 1.5px solid #eee;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardTitle {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a897f;
+  letter-spacing: 0.06em;
+}
+
+.count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8a897f;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 프로필 ──────────────────────────────────── */
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.identity,
+.nickForm {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nick {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: #222;
+}
+
+.sub {
+  font-size: 12.5px;
+  color: #8a897f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nickMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  border: 1.5px solid #252525;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  color: #222;
+}
+
+.input::placeholder {
+  font-weight: 400;
+  color: #b7b4aa;
+}
+
+.inputError {
+  border-color: #c0392b;
+}
+
+.counter {
+  font-size: 11.5px;
+  color: #8a897f;
+  font-variant-numeric: tabular-nums;
+}
+
+.fileInput {
+  display: none;
+}
+
+/* ── 버튼 ────────────────────────────────────── */
+.btn {
+  border-radius: 9px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  border: 1.5px solid #e4e0d6;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background: #faf9f5;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.danger {
+  border-color: #edd6d0;
+  color: #a8402f;
+}
+
+.danger:hover:not(:disabled) {
+  background: #fdf4f2;
+}
+
+.dangerSolid {
+  background: #a8402f;
+  border-color: #a8402f;
+  color: #fff;
+}
+
+.dangerSolid:hover:not(:disabled) {
+  background: #93382a;
+}
+
+.sm {
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.full {
+  width: 100%;
+}
+
+.grow {
+  flex: 1 1 auto;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 안내 문구 ───────────────────────────────── */
+.hint {
+  font-size: 11.5px;
+  color: #8a897f;
+}
+
+.error {
+  margin: 0;
+  font-size: 12.5px;
+  color: #c0392b;
+}
+
+.placeholder {
+  margin: 0;
+  font-size: 13.5px;
+  color: #a3a196;
+}
+
+.retry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── 빈 상태 ─────────────────────────────────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 0 14px;
+  text-align: center;
+}
+
+.emptyArt {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  background: #efece4;
+  border: 1.5px dashed #ddd8cb;
+}
+
+.empty p {
+  margin: 0;
+  font-size: 13.5px;
+  color: #8a897f;
+  line-height: 1.6;
+}
+
+/* ── 범례 ────────────────────────────────────── */
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #8a897f;
+}
+
+.legendNote {
+  margin-left: auto;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 5px;
+}
+
+/* ── 메뉴 목록 ───────────────────────────────── */
+.menus {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menuRow {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0eee7;
+}
+
+.menuRow:last-child {
+  border-bottom: 0;
+}
+
+/* 펼친 행은 배경으로 구분한다. 한 번에 하나만 열리므로 강조가 겹치지 않는다. */
+.menuRowOpen {
+  margin: 0 -8px;
+  padding: 12px 8px;
+  border-bottom: 0;
+  background: #faf8f2;
+  border-radius: 10px;
+}
+
+.menuHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: #efece4;
+}
+
+.menuIdentity {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mname {
+  font-weight: 650;
+  font-size: 14.5px;
+  letter-spacing: -0.2px;
+  color: #222;
+}
+
+.chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #6f6b5e;
+  background: #f3f1ea;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.rank {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+  color: #2f6b4f;
+  background: #e6efe9;
+  font-variant-numeric: tabular-nums;
+}
+
+.rankNone {
+  color: #8a897f;
+  background: #f2f0ea;
+  font-weight: 600;
+}
+
+/*
+ * 채택 : 넘김. 무응답은 넣지 않는다 — 전체 기록의 3/4 이 무응답이라 함께 그리면
+ * 막대가 회색 한 덩어리가 되어 메뉴 간 차이가 보이지 않는다.
+ */
+.bar {
+  display: flex;
+  height: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f4f3ed;
+}
+
+.bar > span {
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.segChosen {
+  background: #2f6b4f;
+}
+
+.segSkipped {
+  background: #96622f;
+}
+
+.segNone {
+  background: #d8d6cc;
+}
+
+.rateLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rate {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2f6b4f;
+  font-variant-numeric: tabular-nums;
+}
+
+.rateNone {
+  color: #a3a196;
+  font-weight: 600;
+}
+
+.nums {
+  font-size: 11.5px;
+  color: #8a897f;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 펼친 상세 ───────────────────────────────── */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.detailList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detailRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #8a897f;
+}
+
+.detailRow dt {
+  display: flex;
+  align-items: center;
+}
+
+.detailRow dd {
+  margin: 0;
+  font-weight: 700;
+  color: #55544d;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailTotal {
+  border-top: 1px solid #f0eee7;
+  padding-top: 7px;
+}
+
+.good {
+  color: #2f6b4f;
+}
+
+.warn {
+  color: #96622f;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fdf4f2;
+  border: 1px solid #f0ddd8;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.confirm p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #7d2f2f;
+  line-height: 1.5;
+}
+
+/* ── 계정 ────────────────────────────────────── */
+.dangerZone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #f0eee7;
+  padding-top: 14px;
+}
+
+.dangerText {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dangerText strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #222;
+}
+
+/* ── 탈퇴 확인 ───────────────────────────────── */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(28, 26, 20, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modal h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: #222;
+}
+
+.modal ul {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.modal li {
+  font-size: 12.5px;
+  color: #6f6b5e;
+  line-height: 1.5;
+}
+
+.modal li strong {
+  color: #222;
+}
+
+.leaveField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.leaveField strong {
+  color: #222;
+}
+
+.leaveBye {
+  margin: 0;
+  font-size: 13.5px;
+  color: #8a897f;
+  line-height: 1.6;
+}
